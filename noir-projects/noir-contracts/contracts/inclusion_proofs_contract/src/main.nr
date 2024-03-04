@@ -7,7 +7,7 @@ contract InclusionProofs {
     use dep::aztec::{
         state_vars::{Map, PrivateSet, PublicMutable}, context::Context,
         note::{
-        note_getter_options::NoteGetterOptions, note_getter_options::NoteStatus,
+        note_viewer_options::NoteViewerOptions, note_getter_options::{NoteGetterOptions, NoteStatus},
         note_header::NoteHeader, utils as note_utils
     }
     };
@@ -67,11 +67,11 @@ contract InclusionProofs {
         // docs:start:get_note_from_pxe
         // 1) Get the note from PXE.
         let private_values = storage.private_values.at(owner);
-        let mut options = NoteGetterOptions::new().select(1, owner.to_field(), Option::none()).set_limit(1);
+        let mut options = NoteViewerOptions::new().select(1, owner.to_field(), Option::none()).set_limit(1);
         if (nullified) {
             options = options.set_status(NoteStatus.ACTIVE_OR_NULLIFIED);
         }
-        let notes = private_values.get_notes(options);
+        let notes = private_values.view_notes(options);
         let maybe_note = notes[0];
         // docs:end:get_note_from_pxe
 
@@ -113,11 +113,11 @@ contract InclusionProofs {
     ) {
         // 2) Get the note from PXE
         let private_values = storage.private_values.at(owner);
-        let mut options = NoteGetterOptions::new().select(1, owner.to_field(), Option::none()).set_limit(1);
+        let mut options = NoteViewerOptions::new().select(1, owner.to_field(), Option::none()).set_limit(1);
         if (fail_case) {
             options = options.set_status(NoteStatus.ACTIVE_OR_NULLIFIED);
         }
-        let notes = private_values.get_notes(options);
+        let notes = private_values.view_notes(options);
         let maybe_note = notes[0];
 
         // 3) Compute the nullifier from the note
@@ -139,11 +139,11 @@ contract InclusionProofs {
     ) {
         // 1) Get the note from PXE.
         let private_values = storage.private_values.at(owner);
-        let mut options = NoteGetterOptions::new().select(1, owner.to_field(), Option::none()).set_limit(1);
+        let mut options = NoteViewerOptions::new().select(1, owner.to_field(), Option::none()).set_limit(1);
         if (nullified) {
             options = options.set_status(NoteStatus.ACTIVE_OR_NULLIFIED);
         }
-        let notes = private_values.get_notes(options);
+        let notes = private_values.view_notes(options);
         let note = notes[0].unwrap();
 
         // 2) Prove the note validity
@@ -161,10 +161,9 @@ contract InclusionProofs {
     fn nullify_note(owner: AztecAddress) {
         let private_values = storage.private_values.at(owner);
         let options = NoteGetterOptions::new().select(1, owner.to_field(), Option::none()).set_limit(1);
-        let notes = private_values.get_notes(options);
-        let note = notes[0].unwrap();
 
-        private_values.remove(note);
+        let notes = private_values.get_notes(options);
+        assert(notes[0].is_some(), "Note does not exist");
     }
     // docs:end:nullify_note
 

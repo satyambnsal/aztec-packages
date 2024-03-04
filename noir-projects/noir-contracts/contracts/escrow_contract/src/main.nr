@@ -36,10 +36,14 @@ contract Escrow {
         let this = context.this_address();
         let sender = context.msg_sender();
 
-        // We don't remove note from the owners set. If a note exists, the owner and recipient are legit.
         let options = NoteGetterOptions::new().select(0, sender.to_field(), Option::none()).select(1, this.to_field(), Option::none()).set_limit(1);
         let notes = storage.owners.get_notes(options);
         assert(notes[0].is_some(), "Sender is not an owner.");
+
+        // get_notes removes the note from the set, so we insert it again. PrivateSet is not the best type of state
+        // variable for this use case.
+        let mut new_note = AddressNote::new(sender, this);
+        storage.owners.insert(&mut new_note, true);
 
         let selector = FunctionSelector::from_signature("transfer((Field),(Field),Field,Field)");
         let _callStackItem = context.call_private_function(
