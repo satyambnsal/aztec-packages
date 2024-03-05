@@ -1,13 +1,11 @@
 // A demonstration of inclusion and non-inclusion proofs.
 contract InclusionProofs {
-    use dep::aztec::protocol_types::{
-        abis::function_selector::FunctionSelector, address::{AztecAddress, EthAddress},
-        grumpkin_point::GrumpkinPoint, contract_class_id::ContractClassId
-    };
-    use dep::aztec::prelude::{
-        AztecAddress, EthAddress, FunctionSelector, NoteHeader, NoteGetterOptions, NoteViewerOptions, NoteStatus, PrivateContext, Map,
-        PrivateSet, PublicMutable
-    };
+    use dep::aztec::{ 
+        prelude::{
+            AztecAddress, EthAddress, FunctionSelector, NoteHeader, NoteGetterOptions, NoteViewerOptions, NoteStatus, 
+            PrivateContext, Map, PrivateSet, PublicMutable 
+        },
+        note_getter_options::NoteStatus };
 
     use dep::aztec::protocol_types::{grumpkin_point::GrumpkinPoint, contract_class_id::ContractClassId};
     use dep::aztec::{context::Context, note::note_getter_options::NoteStatus};

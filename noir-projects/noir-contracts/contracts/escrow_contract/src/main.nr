@@ -27,11 +27,6 @@ contract Escrow {
         let note = storage.owner.get_note();
         assert(note.address == sender);
 
-        // get_notes removes the note from the set, so we insert it again. PrivateSet is not the best type of state
-        // variable for this use case.
-        let mut new_note = AddressNote::new(sender, this);
-        storage.owners.insert(&mut new_note, true);
-
         let selector = FunctionSelector::from_signature("transfer((Field),(Field),Field,Field)");
         let _callStackItem = context.call_private_function(
             token,
