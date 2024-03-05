@@ -2,13 +2,12 @@
 contract InclusionProofs {
     use dep::aztec::{ 
         prelude::{
-            AztecAddress, EthAddress, FunctionSelector, NoteHeader, NoteGetterOptions, NoteViewerOptions, NoteStatus, 
+            AztecAddress, EthAddress, FunctionSelector, NoteHeader, NoteGetterOptions, NoteViewerOptions, 
             PrivateContext, Map, PrivateSet, PublicMutable 
         },
-        note_getter_options::NoteStatus };
+        context::Context, note::note_getter_options::NoteStatus};
 
     use dep::aztec::protocol_types::{grumpkin_point::GrumpkinPoint, contract_class_id::ContractClassId};
-    use dep::aztec::{context::Context, note::note_getter_options::NoteStatus};
     // docs:start:imports
     use dep::aztec::history::{
         contract_inclusion::{prove_contract_inclusion, prove_contract_inclusion_at},
