@@ -71,6 +71,7 @@ export {
   Point,
   getContractInstanceFromDeployParams,
   getContractClassFromArtifact,
+  INITIAL_L2_BLOCK_NUM,
 } from '@aztec/circuits.js';
 
 export { computeMessageSecretHash } from '@aztec/circuits.js/hash';
@@ -80,6 +81,7 @@ export { Grumpkin, Schnorr } from '@aztec/circuits.js/barretenberg';
 export {
   AuthWitness,
   AztecNode,
+  Body,
   CompleteAddress,
   ContractData,
   DeployedContract,
@@ -87,7 +89,8 @@ export {
   ExtendedNote,
   FunctionCall,
   GrumpkinPrivateKey,
-  INITIAL_L2_BLOCK_NUM,
+  L1ToL2Message,
+  L1Actor,
   L2Actor,
   L2Block,
   L2BlockL2Logs,
