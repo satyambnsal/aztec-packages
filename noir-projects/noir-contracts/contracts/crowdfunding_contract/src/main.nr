@@ -1,4 +1,6 @@
+// docs:start:empty-contract
 contract Crowdfunding {
+    // docs:end:empty-contract
     mod interfaces;
 
     use dep::aztec::{
@@ -21,6 +23,7 @@ contract Crowdfunding {
         }
     }
 
+    // docs:start:storage
     #[aztec(storage)]
     struct Storage {
         // Token used for donations (e.g. DAI)
@@ -32,10 +35,13 @@ contract Crowdfunding {
         // Notes emitted to donors when they donate (later on used to claim rewards in the Claim contract)
         claim_notes: PrivateSet<ValueNote>,
     }
+    // docs:end:storage
 
+    // docs:start:constructor
     #[aztec(public)]
     #[aztec(initializer)]
     fn constructor(donation_token: AztecAddress, operator: AztecAddress, deadline: u64) {
+        // docs:end:constructor
         storage.donation_token.initialize(donation_token);
         storage.operator.initialize(operator);
         storage.deadline.initialize(deadline);
