@@ -46,11 +46,11 @@ class AvmFlavor {
     using RelationSeparator = FF;
 
     static constexpr size_t NUM_PRECOMPUTED_ENTITIES = 2;
-    static constexpr size_t NUM_WITNESS_ENTITIES = 131;
+    static constexpr size_t NUM_WITNESS_ENTITIES = 141;
     static constexpr size_t NUM_WIRES = NUM_WITNESS_ENTITIES + NUM_PRECOMPUTED_ENTITIES;
     // We have two copies of the witness entities, so we subtract the number of fixed ones (they have no shift), one for
     // the unshifted and one for the shifted
-    static constexpr size_t NUM_ALL_ENTITIES = 152;
+    static constexpr size_t NUM_ALL_ENTITIES = 162;
 
     using Relations = std::tuple<Avm_vm::avm_alu<FF>,
                                  Avm_vm::avm_binary<FF>,
@@ -106,6 +106,7 @@ class AvmFlavor {
                               avm_alu_ic,
                               avm_alu_in_tag,
                               avm_alu_op_add,
+                              avm_alu_op_cast,
                               avm_alu_op_div,
                               avm_alu_op_eq,
                               avm_alu_op_eq_diff_inv,
@@ -249,6 +250,7 @@ class AvmFlavor {
                      avm_alu_ic,
                      avm_alu_in_tag,
                      avm_alu_op_add,
+                     avm_alu_op_cast,
                      avm_alu_op_div,
                      avm_alu_op_eq,
                      avm_alu_op_eq_diff_inv,
@@ -398,6 +400,7 @@ class AvmFlavor {
                               avm_alu_ic,
                               avm_alu_in_tag,
                               avm_alu_op_add,
+                              avm_alu_op_cast,
                               avm_alu_op_div,
                               avm_alu_op_eq,
                               avm_alu_op_eq_diff_inv,
@@ -562,6 +565,7 @@ class AvmFlavor {
                      avm_alu_ic,
                      avm_alu_in_tag,
                      avm_alu_op_add,
+                     avm_alu_op_cast,
                      avm_alu_op_div,
                      avm_alu_op_eq,
                      avm_alu_op_eq_diff_inv,
@@ -726,6 +730,7 @@ class AvmFlavor {
                      avm_alu_ic,
                      avm_alu_in_tag,
                      avm_alu_op_add,
+                     avm_alu_op_cast,
                      avm_alu_op_div,
                      avm_alu_op_eq,
                      avm_alu_op_eq_diff_inv,
@@ -992,6 +997,7 @@ class AvmFlavor {
             Base::avm_alu_ic = "AVM_ALU_IC";
             Base::avm_alu_in_tag = "AVM_ALU_IN_TAG";
             Base::avm_alu_op_add = "AVM_ALU_OP_ADD";
+            Base::avm_alu_op_cast = "AVM_ALU_OP_CAST";
             Base::avm_alu_op_div = "AVM_ALU_OP_DIV";
             Base::avm_alu_op_eq = "AVM_ALU_OP_EQ";
             Base::avm_alu_op_eq_diff_inv = "AVM_ALU_OP_EQ_DIFF_INV";
@@ -1151,6 +1157,7 @@ class AvmFlavor {
         Commitment avm_alu_ic;
         Commitment avm_alu_in_tag;
         Commitment avm_alu_op_add;
+        Commitment avm_alu_op_cast;
         Commitment avm_alu_op_div;
         Commitment avm_alu_op_eq;
         Commitment avm_alu_op_eq_diff_inv;
@@ -1310,6 +1317,7 @@ class AvmFlavor {
             avm_alu_ic = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);
             avm_alu_in_tag = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);
             avm_alu_op_add = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);
+            avm_alu_op_cast = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);
             avm_alu_op_div = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);
             avm_alu_op_eq = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);
             avm_alu_op_eq_diff_inv = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);
@@ -1474,6 +1482,7 @@ class AvmFlavor {
             serialize_to_buffer<Commitment>(avm_alu_ic, Transcript::proof_data);
             serialize_to_buffer<Commitment>(avm_alu_in_tag, Transcript::proof_data);
             serialize_to_buffer<Commitment>(avm_alu_op_add, Transcript::proof_data);
+            serialize_to_buffer<Commitment>(avm_alu_op_cast, Transcript::proof_data);
             serialize_to_buffer<Commitment>(avm_alu_op_div, Transcript::proof_data);
             serialize_to_buffer<Commitment>(avm_alu_op_eq, Transcript::proof_data);
             serialize_to_buffer<Commitment>(avm_alu_op_eq_diff_inv, Transcript::proof_data);

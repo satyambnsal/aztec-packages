@@ -15,6 +15,7 @@ template <typename FF> struct Avm_aluRow {
     FF avm_alu_ic{};
     FF avm_alu_in_tag{};
     FF avm_alu_op_add{};
+    FF avm_alu_op_cast{};
     FF avm_alu_op_eq{};
     FF avm_alu_op_eq_diff_inv{};
     FF avm_alu_op_mul{};
@@ -102,7 +103,8 @@ template <typename FF_> class avm_aluImpl {
             Avm_DECLARE_VIEWS(0);
 
             auto tmp = (avm_alu_alu_sel -
-                        ((((avm_alu_op_add + avm_alu_op_sub) + avm_alu_op_mul) + avm_alu_op_not) + avm_alu_op_eq));
+                        (((((avm_alu_op_add + avm_alu_op_sub) + avm_alu_op_mul) + avm_alu_op_not) + avm_alu_op_eq) +
+                         avm_alu_op_cast));
             tmp *= scaling_factor;
             std::get<0>(evals) += tmp;
         }
