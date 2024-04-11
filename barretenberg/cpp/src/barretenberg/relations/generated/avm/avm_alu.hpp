@@ -33,6 +33,8 @@ template <typename FF> struct Avm_aluRow {
     FF avm_alu_op_lte{};
     FF avm_alu_op_mul{};
     FF avm_alu_op_not{};
+    FF avm_alu_op_shl{};
+    FF avm_alu_op_shr{};
     FF avm_alu_op_sub{};
     FF avm_alu_p_a_borrow{};
     FF avm_alu_p_b_borrow{};
@@ -44,11 +46,15 @@ template <typename FF> struct Avm_aluRow {
     FF avm_alu_p_sub_b_hi_shift{};
     FF avm_alu_p_sub_b_lo{};
     FF avm_alu_p_sub_b_lo_shift{};
+    FF avm_alu_pow_2_sel{};
     FF avm_alu_res_hi{};
     FF avm_alu_res_lo{};
     FF avm_alu_rng_chk_lookup_selector{};
     FF avm_alu_rng_chk_sel{};
     FF avm_alu_rng_chk_sel_shift{};
+    FF avm_alu_t_sub_b_bits{};
+    FF avm_alu_two_pow_b{};
+    FF avm_alu_two_pow_t_sub_b{};
     FF avm_alu_u128_tag{};
     FF avm_alu_u16_r0{};
     FF avm_alu_u16_r0_shift{};
@@ -168,6 +174,12 @@ inline std::string get_relation_label_avm_alu(int index)
 
     case 46:
         return "SHIFT_RELS_3";
+
+    case 50:
+        return "CHECK_INPUT_DECOMPOSITION";
+
+    case 52:
+        return "CHECK_INPUT_DECOMPOSITION";
     }
     return std::to_string(index);
 }
@@ -176,9 +188,9 @@ template <typename FF_> class avm_aluImpl {
   public:
     using FF = FF_;
 
-    static constexpr std::array<size_t, 48> SUBRELATION_PARTIAL_LENGTHS{
-        2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 5, 5, 5, 5, 6, 6, 8, 3, 4, 4, 5, 4, 4,
-        3, 4, 3, 3, 4, 3, 6, 5, 3, 3, 3, 3, 4, 2, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3,
+    static constexpr std::array<size_t, 54> SUBRELATION_PARTIAL_LENGTHS{
+        2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 5, 5, 5, 5, 6, 6, 8, 3, 4, 4, 5, 4, 4, 3, 4, 3,
+        3, 4, 3, 6, 5, 3, 3, 3, 3, 4, 2, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 4, 3, 4, 4,
     };
 
     template <typename ContainerOverSubrelations, typename AllEntities>
@@ -704,6 +716,58 @@ template <typename FF_> class avm_aluImpl {
             auto tmp = ((avm_alu_p_sub_b_hi_shift - avm_alu_res_hi) * avm_alu_rng_chk_sel_shift);
             tmp *= scaling_factor;
             std::get<47>(evals) += tmp;
+        }
+        // Contribution 48
+        {
+            Avm_DECLARE_VIEWS(48);
+
+            auto tmp = (avm_alu_pow_2_sel - (avm_alu_op_shl + avm_alu_op_shr));
+            tmp *= scaling_factor;
+            std::get<48>(evals) += tmp;
+        }
+        // Contribution 49
+        {
+            Avm_DECLARE_VIEWS(49);
+
+            auto tmp = (avm_alu_t_sub_b_bits -
+                        ((((((avm_alu_u8_tag * FF(8)) + (avm_alu_u16_tag * FF(16))) + (avm_alu_u32_tag * FF(32))) +
+                           (avm_alu_u64_tag * FF(64))) +
+                          (avm_alu_u128_tag * FF(128))) -
+                         avm_alu_ib));
+            tmp *= scaling_factor;
+            std::get<49>(evals) += tmp;
+        }
+        // Contribution 50
+        {
+            Avm_DECLARE_VIEWS(50);
+
+            auto tmp = (avm_alu_op_shr * (((avm_alu_a_hi * avm_alu_two_pow_b) + avm_alu_a_lo) - avm_alu_ia));
+            tmp *= scaling_factor;
+            std::get<50>(evals) += tmp;
+        }
+        // Contribution 51
+        {
+            Avm_DECLARE_VIEWS(51);
+
+            auto tmp = (avm_alu_op_shr * (avm_alu_a_hi - avm_alu_ic));
+            tmp *= scaling_factor;
+            std::get<51>(evals) += tmp;
+        }
+        // Contribution 52
+        {
+            Avm_DECLARE_VIEWS(52);
+
+            auto tmp = (avm_alu_op_shl * (((avm_alu_a_hi * avm_alu_two_pow_t_sub_b) + avm_alu_a_lo) - avm_alu_ia));
+            tmp *= scaling_factor;
+            std::get<52>(evals) += tmp;
+        }
+        // Contribution 53
+        {
+            Avm_DECLARE_VIEWS(53);
+
+            auto tmp = (avm_alu_op_shl * ((avm_alu_a_lo * avm_alu_two_pow_b) - avm_alu_ic));
+            tmp *= scaling_factor;
+            std::get<53>(evals) += tmp;
         }
     }
 };

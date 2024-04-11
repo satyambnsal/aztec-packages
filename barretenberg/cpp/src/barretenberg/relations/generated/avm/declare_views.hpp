@@ -27,6 +27,8 @@
     [[maybe_unused]] auto avm_alu_op_lte = View(new_term.avm_alu_op_lte);                                              \
     [[maybe_unused]] auto avm_alu_op_mul = View(new_term.avm_alu_op_mul);                                              \
     [[maybe_unused]] auto avm_alu_op_not = View(new_term.avm_alu_op_not);                                              \
+    [[maybe_unused]] auto avm_alu_op_shl = View(new_term.avm_alu_op_shl);                                              \
+    [[maybe_unused]] auto avm_alu_op_shr = View(new_term.avm_alu_op_shr);                                              \
     [[maybe_unused]] auto avm_alu_op_sub = View(new_term.avm_alu_op_sub);                                              \
     [[maybe_unused]] auto avm_alu_p_a_borrow = View(new_term.avm_alu_p_a_borrow);                                      \
     [[maybe_unused]] auto avm_alu_p_b_borrow = View(new_term.avm_alu_p_b_borrow);                                      \
@@ -34,10 +36,14 @@
     [[maybe_unused]] auto avm_alu_p_sub_a_lo = View(new_term.avm_alu_p_sub_a_lo);                                      \
     [[maybe_unused]] auto avm_alu_p_sub_b_hi = View(new_term.avm_alu_p_sub_b_hi);                                      \
     [[maybe_unused]] auto avm_alu_p_sub_b_lo = View(new_term.avm_alu_p_sub_b_lo);                                      \
+    [[maybe_unused]] auto avm_alu_pow_2_sel = View(new_term.avm_alu_pow_2_sel);                                        \
     [[maybe_unused]] auto avm_alu_res_hi = View(new_term.avm_alu_res_hi);                                              \
     [[maybe_unused]] auto avm_alu_res_lo = View(new_term.avm_alu_res_lo);                                              \
     [[maybe_unused]] auto avm_alu_rng_chk_lookup_selector = View(new_term.avm_alu_rng_chk_lookup_selector);            \
     [[maybe_unused]] auto avm_alu_rng_chk_sel = View(new_term.avm_alu_rng_chk_sel);                                    \
+    [[maybe_unused]] auto avm_alu_t_sub_b_bits = View(new_term.avm_alu_t_sub_b_bits);                                  \
+    [[maybe_unused]] auto avm_alu_two_pow_b = View(new_term.avm_alu_two_pow_b);                                        \
+    [[maybe_unused]] auto avm_alu_two_pow_t_sub_b = View(new_term.avm_alu_two_pow_t_sub_b);                            \
     [[maybe_unused]] auto avm_alu_u128_tag = View(new_term.avm_alu_u128_tag);                                          \
     [[maybe_unused]] auto avm_alu_u16_r0 = View(new_term.avm_alu_u16_r0);                                              \
     [[maybe_unused]] auto avm_alu_u16_r1 = View(new_term.avm_alu_u16_r1);                                              \
@@ -132,10 +138,13 @@
     [[maybe_unused]] auto avm_main_sel_op_mul = View(new_term.avm_main_sel_op_mul);                                    \
     [[maybe_unused]] auto avm_main_sel_op_not = View(new_term.avm_main_sel_op_not);                                    \
     [[maybe_unused]] auto avm_main_sel_op_or = View(new_term.avm_main_sel_op_or);                                      \
+    [[maybe_unused]] auto avm_main_sel_op_shl = View(new_term.avm_main_sel_op_shl);                                    \
+    [[maybe_unused]] auto avm_main_sel_op_shr = View(new_term.avm_main_sel_op_shr);                                    \
     [[maybe_unused]] auto avm_main_sel_op_sub = View(new_term.avm_main_sel_op_sub);                                    \
     [[maybe_unused]] auto avm_main_sel_op_xor = View(new_term.avm_main_sel_op_xor);                                    \
     [[maybe_unused]] auto avm_main_sel_rng_16 = View(new_term.avm_main_sel_rng_16);                                    \
     [[maybe_unused]] auto avm_main_sel_rng_8 = View(new_term.avm_main_sel_rng_8);                                      \
+    [[maybe_unused]] auto avm_main_table_pow_2 = View(new_term.avm_main_table_pow_2);                                  \
     [[maybe_unused]] auto avm_main_tag_err = View(new_term.avm_main_tag_err);                                          \
     [[maybe_unused]] auto avm_main_w_in_tag = View(new_term.avm_main_w_in_tag);                                        \
     [[maybe_unused]] auto avm_mem_addr = View(new_term.avm_mem_addr);                                                  \
@@ -176,6 +185,8 @@
     [[maybe_unused]] auto lookup_byte_operations = View(new_term.lookup_byte_operations);                              \
     [[maybe_unused]] auto incl_main_tag_err = View(new_term.incl_main_tag_err);                                        \
     [[maybe_unused]] auto incl_mem_tag_err = View(new_term.incl_mem_tag_err);                                          \
+    [[maybe_unused]] auto pow_2_lookups = View(new_term.pow_2_lookups);                                                \
+    [[maybe_unused]] auto pow_2_lookups_1 = View(new_term.pow_2_lookups_1);                                            \
     [[maybe_unused]] auto lookup_u8_0 = View(new_term.lookup_u8_0);                                                    \
     [[maybe_unused]] auto lookup_u8_1 = View(new_term.lookup_u8_1);                                                    \
     [[maybe_unused]] auto lookup_u16_0 = View(new_term.lookup_u16_0);                                                  \
@@ -197,6 +208,8 @@
     [[maybe_unused]] auto lookup_byte_operations_counts = View(new_term.lookup_byte_operations_counts);                \
     [[maybe_unused]] auto incl_main_tag_err_counts = View(new_term.incl_main_tag_err_counts);                          \
     [[maybe_unused]] auto incl_mem_tag_err_counts = View(new_term.incl_mem_tag_err_counts);                            \
+    [[maybe_unused]] auto pow_2_lookups_counts = View(new_term.pow_2_lookups_counts);                                  \
+    [[maybe_unused]] auto pow_2_lookups_1_counts = View(new_term.pow_2_lookups_1_counts);                              \
     [[maybe_unused]] auto lookup_u8_0_counts = View(new_term.lookup_u8_0_counts);                                      \
     [[maybe_unused]] auto lookup_u8_1_counts = View(new_term.lookup_u8_1_counts);                                      \
     [[maybe_unused]] auto lookup_u16_0_counts = View(new_term.lookup_u16_0_counts);                                    \

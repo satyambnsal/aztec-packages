@@ -22,6 +22,8 @@ namespace avm_alu(256);
     pol commit op_lte;
     pol commit cmp_sel; // Predicate if LT or LTE is set
     pol commit rng_chk_sel; // Predicate representing a range check row.
+    pol commit op_shl;
+    pol commit op_shr;
 
     // Instruction tag (1: u8, 2: u16, 3: u32, 4: u64, 5: u128, 6: field) copied from Main table
     pol commit in_tag;
@@ -358,12 +360,12 @@ namespace avm_alu(256);
     //    (a) We do not swap the operands, so a = x and b = y,
     //    (b) IS_GT = 1 - ic = 0
     //    (c) res_lo = B_SUB_A_LO and res_hi = B_SUB_A_HI
-    //    (d) res_lo = y_lo - x_lo + borrow * 2**128 and res_hi = y_hi - x_hi - borrow.
-    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, x_lo, y_hi, y_lo, we
+    //    (d) res_lo = y_lo - a_lo + borrow * 2**128 and res_hi = y_hi - a_hi - borrow.
+    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, a_lo, y_hi, y_lo, we
     //        have the guarantee that res_lo >= 0 && res_hi >= 0. Furthermore, borrow is
     //        boolean and so we have two cases to consider:
-    //         (i)  borrow == 0 ==> y_lo >= x_lo && y_hi >= x_hi
-    //         (ii) borrow == 1 ==> y_hi >= x_hi + 1 ==> y_hi > x_hi
+    //         (i)  borrow == 0 ==> y_lo >= a_lo && y_hi >= a_hi
+    //         (ii) borrow == 1 ==> y_hi >= a_hi + 1 ==> y_hi > x_hi
     //        This concludes the proof as for both cases, we must have: y >= x
     //
     // (2) Assume a proof satisfies the constraints for LTE(x,y,0), i.e. x > y.
@@ -371,12 +373,12 @@ namespace avm_alu(256);
     //    (a) We do not swap the operands, so a = x and b = y,
     //    (b) IS_GT = 1 - ic = 1
     //    (c) res_lo = A_SUB_B_LO and res_hi = A_SUB_B_HI
-    //    (d) res_lo = x_lo - y_lo - 1 + borrow * 2**128 and res_hi = x_hi - y_hi - borrow.
-    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, x_lo, y_hi, y_lo, we
+    //    (d) res_lo = a_lo - y_lo - 1 + borrow * 2**128 and res_hi = a_hi - y_hi - borrow.
+    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, a_lo, y_hi, y_lo, we
     //        have the guarantee that res_lo >= 0 && res_hi >= 0. Furthermore, borrow is
     //        boolean and so we have two cases to consider:
-    //         (i)  borrow == 0 ==> x_lo > y_lo && x_hi >= y_hi
-    //         (ii) borrow == 1 ==> x_hi > y_hi
+    //         (i)  borrow == 0 ==> a_lo > y_lo && a_hi >= y_hi
+    //         (ii) borrow == 1 ==> a_hi > y_hi
     //        This concludes the proof as for both cases, we must have: x > y
     //
 
@@ -386,12 +388,12 @@ namespace avm_alu(256);
     //    (a) We DO swap the operands, so a = y and b = x,
     //    (b) IS_GT = ic = 1
     //    (c) res_lo = A_SUB_B_LO and res_hi = A_SUB_B_HI, **remember we have swapped inputs**
-    //    (d) res_lo = y_lo - x_lo - 1 + borrow * 2**128 and res_hi = y_hi - x_hi - borrow.
-    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, x_lo, y_hi, y_lo, we
+    //    (d) res_lo = y_lo - a_lo - 1 + borrow * 2**128 and res_hi = y_hi - a_hi - borrow.
+    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, a_lo, y_hi, y_lo, we
     //        have the guarantee that res_lo >= 0 && res_hi >= 0. Furthermore, borrow is
     //        boolean and so we have two cases to consider:
-    //         (i)  borrow == 0 ==> y_lo > x_lo && y_hi >= x_hi
-    //         (ii) borrow == 1 ==> y_hi > x_hi
+    //         (i)  borrow == 0 ==> y_lo > a_lo && y_hi >= a_hi
+    //         (ii) borrow == 1 ==> y_hi > a_hi
     //        This concludes the proof as for both cases, we must have: x < y
     //
     // (2) Assume a proof satisfies the constraint for LT(x,y,0), i.e. x >= y.
@@ -399,12 +401,12 @@ namespace avm_alu(256);
     //    (a) We DO swap the operands, so a = y and b = x,
     //    (b) IS_GT = ic = 0
     //    (c) res_lo = B_SUB_A_LO and res_hi = B_SUB_A_HI, **remember we have swapped inputs**
-    //    (d) res_lo = x_lo - y_lo + borrow * 2**128 and res_hi = x_hi - y_hi - borrow.
-    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, x_lo, y_hi, y_lo, we
+    //    (d) res_lo = a_lo - y_lo + borrow * 2**128 and res_hi = a_hi - y_hi - borrow.
+    //    (e) Due to 128-bit range checks on res_lo, res_hi, y_lo, a_lo, y_hi, y_lo, we
     //        have the guarantee that res_lo >= 0 && res_hi >= 0. Furthermore, borrow is
     //        boolean and so we have two cases to consider:
-    //         (i)  borrow == 0 ==> x_lo >= y_lo && x_hi >= y_hi
-    //         (ii) borrow == 1 ==> x_hi > y_hi
+    //         (i)  borrow == 0 ==> a_lo >= y_lo && a_hi >= y_hi
+    //         (ii) borrow == 1 ==> a_hi > y_hi
     //        This concludes the proof as for both cases, we must have: x >= y
 
     pol commit res_lo;
@@ -474,3 +476,75 @@ namespace avm_alu(256);
     (p_sub_b_lo' - res_lo) * rng_chk_sel'= 0;
     (p_sub_b_hi' - res_hi) * rng_chk_sel'= 0;
 
+    // ========= SHIFT LEFT/RIGHT OPERATIONS ===============================
+    // Given inputs to a shift operation, a & b, and a memory tag, mem_tag.
+    // Split a into Big Endian hi and lo limbs, a_hi and a_lo, and the number of bits represented by the memory tag, t.
+    // QUESTION: SHOULD B BE CONSTRAINED TO BE U8 -> i.e. when would we shift more than 255 bits when the max number of bits of a is 128bits?
+    //
+    // === IF SHR
+    // (1) Prove the correct decomposition: a_hi * 2**b + a_lo = a
+    // (2) Range check a_hi < 2**(t-b) && a_lo < 2**b, ensure we have not overflowed the limbs during decomp
+    // (3) Return a_hi
+    //
+    //   <--(t-b) --> | Length: b
+    // ---------------|-----------------------
+    // |      a_hi    |          a_lo        | --> a
+    // ---------------------------------------
+    //
+    // === IF SHL
+    // (1) Prove the correct decomposition: a_hi * 2**(t-b) + a_lo = a
+    // (2) Range check a_hi < 2**b && a_lo < 2**(t-b)
+    // (3) Return a_lo * 2**b
+    // 
+    //          <-- b-->      |   <-- (t-b) -->
+    // -----------------------|---------------
+    // |      a_hi            |  a_lo        | --> a
+    // ---------------------------------------
+
+    // TODO: Variable Range Checks
+    // Check that a_lo and a_hi combine to be the same number of bits represented by the Memory Tag
+    // Can we can convert this into a fixed range check over b that might be more optimal for us? 
+    // SHR: a_hi < 2**(t - b) && a_lo < 2**b
+    // SHL: a_hi < 2**b && a_lo < 2**(t - b)
+
+    // === General Notes:
+    // There are probably ways to merge various relations for the SHL/SHR, but theyre separate
+    // now while we are still figuring out.
+
+    // We would like to calculate 2 ** ib, but it's costly in the circuit and if ib is <= U8
+    // we could just lookup the result of 2**b based on expanding the 8-bit lookup in main.
+    pol commit two_pow_b; 
+    pol commit pow_2_sel;
+    pow_2_sel = op_shl + op_shr;
+
+    
+    // Bit length, t, based on the mem tag.
+    pol MAX_BITS = u8_tag * 8 + 
+                u16_tag * 16 +
+                u32_tag * 32 +
+                u64_tag * 64 +
+                u128_tag * 128;
+
+    // The value of (t - b) bits
+    pol commit t_sub_b_bits;
+    t_sub_b_bits = MAX_BITS - ib;
+
+    // The looked up value of 2**(t-b)
+    pol commit two_pow_t_sub_b;
+
+    // ========= SHIFT RIGHT OPERATIONS ===============================
+    // a_hi * 2**b + a_lo = a
+    #[CHECK_INPUT_DECOMPOSITION]
+    op_shr * ((a_hi * two_pow_b + a_lo) - ia) = 0;
+
+    // Return hi limb
+    op_shr * (a_hi - ic) = 0;
+
+    // ========= SHIFT LEFT OPERATIONS ===============================
+    // a_hi * 2**(t-b) + a_lo = a
+    #[CHECK_INPUT_DECOMPOSITION]
+    op_shl * ((a_hi * two_pow_t_sub_b + a_lo) - ia) = 0;
+
+    // Return lo limb a_lo * 2**b
+    op_shl * (a_lo * two_pow_b - ic) = 0;
+    
