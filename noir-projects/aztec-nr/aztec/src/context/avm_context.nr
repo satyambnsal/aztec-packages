@@ -20,9 +20,6 @@ impl AvmContext {
         AvmContext { inputs }
     }
 
-    pub fn origin(self) -> AztecAddress {
-        origin()
-    }
     pub fn storage_address(self) -> AztecAddress {
         storage_address()
     }
@@ -246,9 +243,6 @@ fn address() -> AztecAddress {}
 
 #[oracle(avmOpcodeStorageAddress)]
 fn storage_address() -> AztecAddress {}
-
-#[oracle(avmOpcodeOrigin)]
-fn origin() -> AztecAddress {}
 
 #[oracle(avmOpcodeSender)]
 fn sender() -> AztecAddress {}

@@ -40,7 +40,6 @@ export function createAvmExecutionEnvironment(
   return new AvmExecutionEnvironment(
     current.contractAddress,
     current.callContext.storageContractAddress,
-    current.callContext.msgSender, // TODO: origin is not available
     current.callContext.msgSender,
     current.callContext.portalContractAddress,
     /*feePerL1Gas=*/ Fr.zero(),
