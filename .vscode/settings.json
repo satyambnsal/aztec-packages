@@ -169,5 +169,6 @@
     "**/target/**": true,
     "**/l1-contracts/lib/**": true,
     "**/barretenberg/cpp/build*/**": true
-  }
+  },
+  "workbench.editor.enablePreviewFromQuickOpen": true
 }
