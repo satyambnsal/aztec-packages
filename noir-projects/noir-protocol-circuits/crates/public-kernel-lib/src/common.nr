@@ -57,6 +57,8 @@ pub fn initialize_emitted_end_values(
 ) {
     circuit_outputs.constants = previous_kernel.public_inputs.constants;
 
+    // TODO(alpha) - need to pass forward gas used.
+
     if circuit_outputs.revert_code == 0 {
         let start = previous_kernel.public_inputs.end;
         circuit_outputs.end.new_note_hashes = array_to_bounded_vec(start.new_note_hashes);

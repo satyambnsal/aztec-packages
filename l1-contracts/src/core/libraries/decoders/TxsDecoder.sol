@@ -105,6 +105,8 @@ library TxsDecoder {
          * Zero values.
          */
 
+        // TODO(alpha) - need to publish/decode the gas information
+
         // Revert Code
         offsets.revertCode = offset;
         offset += 0x1;

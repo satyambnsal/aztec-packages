@@ -79,6 +79,13 @@ global PUBLIC_DATA_SUBTREE_SIBLING_PATH_LENGTH: u64 = 35;
 global L1_TO_L2_MSG_SUBTREE_HEIGHT: u64 = 4;
 global L1_TO_L2_MSG_SUBTREE_SIBLING_PATH_LENGTH: u64 = 12;
 
+// Gas and metering
+global DA_GAS_PER_BYTE: Field = 16;
+// TODO(@just-mitch) need to update constants.in.ts to do math
+// 17 * 16; 8 for da_gas_used, 8 for compute_gas_used, 1 for revert_code, times DA_GAS_PER_BYTE
+global FIXED_DA_GAS: Field = 512;
+global DA_BYTES_PER_FIELD: Field = 32;
+
 // MISC CONSTANTS
 global FUNCTION_SELECTOR_NUM_BYTES: Field = 4;
 global ARGS_HASH_CHUNK_LENGTH: u64 = 64;

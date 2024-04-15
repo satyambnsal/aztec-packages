@@ -12,9 +12,9 @@ use crate::{
     constants::{
     MAX_NEW_NOTE_HASHES_PER_TX, MAX_NEW_NULLIFIERS_PER_TX, MAX_PRIVATE_CALL_STACK_LENGTH_PER_TX,
     MAX_PUBLIC_CALL_STACK_LENGTH_PER_TX, MAX_NEW_L2_TO_L1_MSGS_PER_TX,
-    MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX
+    MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX, DA_BYTES_PER_FIELD, DA_GAS_PER_BYTE, FIXED_DA_GAS
 },
-    traits::Empty
+    traits::{Empty, is_empty}
 };
 
 struct PrivateAccumulatedDataBuilder {
@@ -48,7 +48,7 @@ impl PrivateAccumulatedDataBuilder {
             unencrypted_log_preimages_length: self.unencrypted_log_preimages_length,
             private_call_stack: self.private_call_stack.storage,
             public_call_stack: self.public_call_stack.storage,
-            gas_used: self.gas_used
+            gas_used: self.compute_gas_used()
         }
     }
 
@@ -62,7 +62,7 @@ impl PrivateAccumulatedDataBuilder {
             encrypted_log_preimages_length: self.encrypted_log_preimages_length,
             unencrypted_log_preimages_length: self.unencrypted_log_preimages_length,
             public_data_update_requests: [PublicDataUpdateRequest::empty(); MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX],
-            gas_used: self.gas_used
+            gas_used: self.compute_gas_used()
         }
     }
 
@@ -107,6 +107,61 @@ impl PrivateAccumulatedDataBuilder {
 
         (non_revertible_builder.finish(), revertible_builder.finish())
     }
+
+    fn compute_da_gas(self) -> Field {
+        let mut metered_bytes = 0;
+
+        // note_hash_gas
+        for i in 0..self.new_note_hashes.storage.len() {
+            if !is_empty(self.new_note_hashes.get_unchecked(i)) {
+                metered_bytes += DA_BYTES_PER_FIELD;
+            }
+        }
+
+        // nullifier_gas
+        for i in 0..self.new_nullifiers.storage.len() {
+            if !is_empty(self.new_nullifiers.get_unchecked(i)) {
+                metered_bytes += DA_BYTES_PER_FIELD;
+            }
+        }
+
+        // l2_to_l1_msg_gas
+        for i in 0..self.new_l2_to_l1_msgs.storage.len() {
+            if !is_empty(self.new_l2_to_l1_msgs.get_unchecked(i)) {
+                metered_bytes += DA_BYTES_PER_FIELD;
+            }
+        }
+
+        // encrypted_logs_hash_gas
+        metered_bytes += self.encrypted_log_preimages_length;
+
+        // unencrypted_logs_hash_gas
+        metered_bytes += self.unencrypted_log_preimages_length;
+
+        FIXED_DA_GAS + DA_GAS_PER_BYTE * metered_bytes
+    }
+
+    fn compute_gas_used(self) -> GasUsed {
+        // TODO(alpha) - add l1_gas and l2_gas
+        GasUsed { da_gas: self.compute_da_gas(), l1_gas: 0, l2_gas: 0 }
+    }
+}
+
+impl Empty for PrivateAccumulatedDataBuilder {
+    fn empty() -> Self {
+        PrivateAccumulatedDataBuilder {
+            new_note_hashes: BoundedVec::new(),
+            new_nullifiers: BoundedVec::new(),
+            new_l2_to_l1_msgs: BoundedVec::new(),
+            encrypted_logs_hash: 0,
+            unencrypted_logs_hash: 0,
+            encrypted_log_preimages_length: 0,
+            unencrypted_log_preimages_length: 0,
+            private_call_stack: BoundedVec::new(),
+            public_call_stack: BoundedVec::new(),
+            gas_used: GasUsed::empty(),
+        }
+    }
 }
 
 mod tests {
@@ -117,7 +172,8 @@ mod tests {
         public_data_update_request::PublicDataUpdateRequest,
         side_effect::{SideEffect, SideEffectLinkedToNoteHash}
     },
-        address::AztecAddress, utils::arrays::array_eq
+        constants::{FIXED_DA_GAS, DA_GAS_PER_BYTE, DA_BYTES_PER_FIELD}, address::AztecAddress,
+        utils::arrays::array_eq
     };
 
     #[test]
@@ -190,21 +246,29 @@ mod tests {
         assert(array_eq(revertible.new_nullifiers, revertible_nullifiers));
         assert(array_eq(revertible.public_call_stack, revertible_public_call_stack));
     }
-}
 
-impl Empty for PrivateAccumulatedDataBuilder {
-    fn empty() -> Self {
-        PrivateAccumulatedDataBuilder {
-            new_note_hashes: BoundedVec::new(),
-            new_nullifiers: BoundedVec::new(),
-            new_l2_to_l1_msgs: BoundedVec::new(),
-            encrypted_logs_hash: 0,
-            unencrypted_logs_hash: 0,
-            encrypted_log_preimages_length: 0,
-            unencrypted_log_preimages_length: 0,
-            private_call_stack: BoundedVec::new(),
-            public_call_stack: BoundedVec::new(),
-            gas_used: GasUsed::empty(),
-        }
+    #[test]
+    fn test_empty_compute_da_gas() {
+        let builder = PrivateAccumulatedDataBuilder::empty();
+
+        assert_eq(builder.compute_da_gas(), FIXED_DA_GAS);
+    }
+
+    #[test]
+    fn test_non_empty_compute_da_gas() {
+        let mut builder = PrivateAccumulatedDataBuilder::empty();
+
+        // each of these count as 1 field
+        builder.new_note_hashes.push(SideEffect { value: 1, counter: 1 });
+        builder.new_note_hashes.push(SideEffect { value: 2, counter: 2 });
+        builder.new_nullifiers.push(SideEffectLinkedToNoteHash { value: 1, counter: 1, note_hash: 1 });
+        builder.new_nullifiers.push(SideEffectLinkedToNoteHash { value: 2, counter: 2, note_hash: 2 });
+        builder.new_nullifiers.push(SideEffectLinkedToNoteHash { value: 3, counter: 3, note_hash: 3 });
+        builder.new_l2_to_l1_msgs.push(1);
+
+        builder.encrypted_log_preimages_length = 3;
+        builder.unencrypted_log_preimages_length = 4;
+
+        assert_eq(builder.compute_da_gas(), FIXED_DA_GAS + DA_GAS_PER_BYTE * (6 * DA_BYTES_PER_FIELD + 7));
     }
 }

@@ -149,6 +149,8 @@ pub fn compute_tx_effects_hash(combined: CombinedAccumulatedData, revert_code: u
 
     let mut offset = 0;
 
+    // TODO(alpha) - need to include gas used in the tx effects hash
+
     // upcast to Field to have the same size for the purposes of the hash
     txs_effects_hash_input[offset] = revert_code as Field;
     offset += 1;
