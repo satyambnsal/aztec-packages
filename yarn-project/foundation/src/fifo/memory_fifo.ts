@@ -39,6 +39,10 @@ export class MemoryFifo<T> {
       return Promise.resolve(null);
     }
 
+    if (timeout === 0) {
+      return Promise.resolve(null);
+    }
+
     return new Promise<T | null>((resolve, reject) => {
       this.waiting.push(resolve);
 
