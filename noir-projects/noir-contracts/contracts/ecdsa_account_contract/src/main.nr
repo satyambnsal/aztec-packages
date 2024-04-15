@@ -16,6 +16,7 @@ contract EcdsaAccount {
 
     use crate::ecdsa_public_key_note::EcdsaPublicKeyNote;
 
+    #[aztec(storage)]
     struct Storage {
         public_key: PrivateImmutable<EcdsaPublicKeyNote>,
     }
@@ -39,6 +40,7 @@ contract EcdsaAccount {
     }
 
     #[aztec(private)]
+    #[aztec(noinitcheck)]
     fn spend_private_authwit(inner_hash: Field) -> Field {
         let actions = AccountActions::private(&mut context, ACCOUNT_ACTIONS_STORAGE_SLOT, is_valid_impl);
         actions.spend_private_authwit(inner_hash)
