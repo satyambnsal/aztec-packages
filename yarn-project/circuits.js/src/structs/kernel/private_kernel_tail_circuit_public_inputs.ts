@@ -1,8 +1,8 @@
 import { BufferReader, serializeToBuffer } from '@aztec/foundation/serialize';
 
-import { MAX_NEW_NULLIFIERS_PER_TX } from '../../constants.gen.js';
 import { countAccumulatedItems, mergeAccumulatedData } from '../../utils/index.js';
 import { AggregationObject } from '../aggregation_object.js';
+import { PartialStateReference } from '../partial_state_reference.js';
 import { RevertCode } from '../revert_code.js';
 import { RollupValidationRequests } from '../rollup_validation_requests.js';
 import { ValidationRequests } from '../validation_requests.js';
@@ -135,6 +135,7 @@ export class PrivateKernelTailCircuitPublicInputs {
       this.forRollup.rollupValidationRequests,
       this.forRollup.end,
       this.constants,
+      PartialStateReference.empty(),
       this.revertCode,
     );
   }
@@ -148,22 +149,18 @@ export class PrivateKernelTailCircuitPublicInputs {
 
   getNonEmptyNoteHashes() {
     const noteHashes = this.forPublic
-      ? mergeAccumulatedData(
-          MAX_NEW_NULLIFIERS_PER_TX,
-          this.forPublic.endNonRevertibleData.newNoteHashes,
-          this.forPublic.end.newNoteHashes,
-        ).map(n => n.value)
+      ? mergeAccumulatedData(this.forPublic.endNonRevertibleData.newNoteHashes, this.forPublic.end.newNoteHashes).map(
+          n => n.value,
+        )
       : this.forRollup!.end.newNoteHashes;
     return noteHashes.filter(n => !n.isZero());
   }
 
   getNonEmptyNullifiers() {
     const nullifiers = this.forPublic
-      ? mergeAccumulatedData(
-          MAX_NEW_NULLIFIERS_PER_TX,
-          this.forPublic.endNonRevertibleData.newNullifiers,
-          this.forPublic.end.newNullifiers,
-        ).map(n => n.value)
+      ? mergeAccumulatedData(this.forPublic.endNonRevertibleData.newNullifiers, this.forPublic.end.newNullifiers).map(
+          n => n.value,
+        )
       : this.forRollup!.end.newNullifiers;
     return nullifiers.filter(n => !n.isZero());
   }

@@ -17,6 +17,7 @@
 #include "recursion_constraint.hpp"
 #include "schnorr_verify.hpp"
 #include "sha256_constraint.hpp"
+#include "variable_base_scalar_mul.hpp"
 #include <utility>
 
 namespace acir_format {
@@ -48,6 +49,7 @@ struct AcirFormat {
     std::vector<PedersenHashConstraint> pedersen_hash_constraints;
     std::vector<Poseidon2Constraint> poseidon2_constraints;
     std::vector<FixedBaseScalarMul> fixed_base_scalar_mul_constraints;
+    std::vector<VariableBaseScalarMul> variable_base_scalar_mul_constraints;
     std::vector<EcAdd> ec_add_constraints;
     std::vector<RecursionConstraint> recursion_constraints;
     std::vector<BigIntFromLeBytes> bigint_from_le_bytes_constraints;
@@ -59,7 +61,9 @@ struct AcirFormat {
     // This could be a large vector so use slab allocator, we don't expect the blackbox implementations to be so large.
     std::vector<poly_triple_<curve::BN254::ScalarField>,
                 ContainerSlabAllocator<poly_triple_<curve::BN254::ScalarField>>>
-        constraints;
+        poly_triple_constraints;
+    std::vector<mul_quad_<curve::BN254::ScalarField>, ContainerSlabAllocator<mul_quad_<curve::BN254::ScalarField>>>
+        quad_constraints;
     std::vector<BlockConstraint> block_constraints;
 
     // For serialization, update with any new fields
@@ -80,9 +84,10 @@ struct AcirFormat {
                    pedersen_hash_constraints,
                    poseidon2_constraints,
                    fixed_base_scalar_mul_constraints,
+                   variable_base_scalar_mul_constraints,
                    ec_add_constraints,
                    recursion_constraints,
-                   constraints,
+                   poly_triple_constraints,
                    block_constraints,
                    bigint_from_le_bytes_constraints,
                    bigint_to_le_bytes_constraints,

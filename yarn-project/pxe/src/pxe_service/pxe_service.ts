@@ -27,7 +27,6 @@ import {
   CallRequest,
   CompleteAddress,
   FunctionData,
-  type GrumpkinPrivateKey,
   MAX_PUBLIC_CALL_STACK_LENGTH_PER_TX,
   type PartialAddress,
   type PrivateKernelTailCircuitPublicInputs,
@@ -38,16 +37,16 @@ import {
 import { computeCommitmentNonce, siloNullifier } from '@aztec/circuits.js/hash';
 import { type ContractArtifact, type DecodedReturn, FunctionSelector, encodeArguments } from '@aztec/foundation/abi';
 import { arrayNonEmptyLength, padArrayEnd } from '@aztec/foundation/collection';
-import { Fr } from '@aztec/foundation/fields';
+import { Fr, type Point } from '@aztec/foundation/fields';
 import { SerialQueue } from '@aztec/foundation/fifo';
 import { type DebugLogger, createDebugLogger } from '@aztec/foundation/log';
 import { Timer } from '@aztec/foundation/timer';
 import {
   type AcirSimulator,
   type ExecutionResult,
-  collectEncryptedLogs,
   collectEnqueuedPublicFunctionCalls,
-  collectUnencryptedLogs,
+  collectSortedEncryptedLogs,
+  collectSortedUnencryptedLogs,
   resolveOpcodeLocations,
 } from '@aztec/simulator';
 import { type ContractClassWithId, type ContractInstanceWithAddress } from '@aztec/types/contracts';
@@ -105,7 +104,8 @@ export class PXEService implements PXE {
   }
 
   private async restoreNoteProcessors() {
-    const publicKeys = await this.keyStore.getAccounts();
+    const accounts = await this.keyStore.getAccounts();
+    const publicKeys = accounts.map(async account => await this.keyStore.getMasterIncomingViewingPublicKey(account));
     const publicKeysSet = new Set(publicKeys.map(k => k.toString()));
 
     const registeredAddresses = await this.db.getCompleteAddresses();
@@ -165,27 +165,36 @@ export class PXEService implements PXE {
     return artifact && getContractClassFromArtifact(artifact);
   }
 
-  public async registerAccount(privKey: GrumpkinPrivateKey, partialAddress: PartialAddress): Promise<CompleteAddress> {
-    const completeAddress = CompleteAddress.fromPrivateKeyAndPartialAddress(privKey, partialAddress);
-    const wasAdded = await this.db.addCompleteAddress(completeAddress);
-    if (wasAdded) {
-      const pubKey = await this.keyStore.addAccount(privKey);
-      this.synchronizer.addAccount(pubKey, this.keyStore, this.config.l2StartingBlock);
+  public async registerAccount(secretKey: Fr, partialAddress: PartialAddress): Promise<CompleteAddress> {
+    const accounts = await this.keyStore.getAccounts();
+    const account = await this.keyStore.addAccount(secretKey, partialAddress);
+    const completeAddress = new CompleteAddress(
+      account,
+      await this.keyStore.getMasterIncomingViewingPublicKey(account),
+      partialAddress,
+    );
+    if (accounts.includes(account)) {
+      this.log.info(`Account:\n "${completeAddress.address.toString()}"\n already registered.`);
+      return completeAddress;
+    } else {
+      const masterIncomingViewingPublicKey = await this.keyStore.getMasterIncomingViewingPublicKey(account);
+      this.synchronizer.addAccount(masterIncomingViewingPublicKey, this.keyStore, this.config.l2StartingBlock);
       this.log.info(`Registered account ${completeAddress.address.toString()}`);
       this.log.debug(`Registered account\n ${completeAddress.toReadableString()}`);
-    } else {
-      this.log.info(`Account:\n "${completeAddress.address.toString()}"\n already registered.`);
     }
+
+    await this.db.addCompleteAddress(completeAddress);
     return completeAddress;
   }
 
   public async getRegisteredAccounts(): Promise<CompleteAddress[]> {
     // Get complete addresses of both the recipients and the accounts
-    const addresses = await this.db.getCompleteAddresses();
+    const completeAddresses = await this.db.getCompleteAddresses();
     // Filter out the addresses not corresponding to accounts
-    const accountPubKeys = await this.keyStore.getAccounts();
-    const accounts = addresses.filter(address => accountPubKeys.find(pubKey => pubKey.equals(address.publicKey)));
-    return accounts;
+    const accounts = await this.keyStore.getAccounts();
+    return completeAddresses.filter(completeAddress =>
+      accounts.find(address => address.equals(completeAddress.address)),
+    );
   }
 
   public async getRegisteredAccount(address: AztecAddress): Promise<CompleteAddress | undefined> {
@@ -194,8 +203,28 @@ export class PXEService implements PXE {
     return Promise.resolve(account);
   }
 
-  public async registerRecipient(recipient: CompleteAddress): Promise<void> {
+  public async getRegisteredAccountPublicKeysHash(address: AztecAddress): Promise<Fr | undefined> {
+    const accounts = await this.keyStore.getAccounts();
+    if (!accounts.some(account => account.equals(address))) {
+      return undefined;
+    }
+    return this.keyStore.getPublicKeysHash(address);
+  }
+
+  public async registerRecipient(recipient: CompleteAddress, publicKeys: Point[] = []): Promise<void> {
     const wasAdded = await this.db.addCompleteAddress(recipient);
+
+    // TODO #5834: This should be refactored to be okay with only adding complete address
+    if (publicKeys.length !== 0) {
+      await this.keyStore.addPublicKeysForAccount(
+        recipient.address,
+        publicKeys[0],
+        publicKeys[1],
+        publicKeys[2],
+        publicKeys[3],
+      );
+    }
+
     if (wasAdded) {
       this.log.info(`Added recipient:\n ${recipient.toReadableString()}`);
     } else {
@@ -205,10 +234,12 @@ export class PXEService implements PXE {
 
   public async getRecipients(): Promise<CompleteAddress[]> {
     // Get complete addresses of both the recipients and the accounts
-    const addresses = await this.db.getCompleteAddresses();
+    const completeAddresses = await this.db.getCompleteAddresses();
     // Filter out the addresses corresponding to accounts
-    const accountPubKeys = await this.keyStore.getAccounts();
-    const recipients = addresses.filter(address => !accountPubKeys.find(pubKey => pubKey.equals(address.publicKey)));
+    const accounts = await this.keyStore.getAccounts();
+    const recipients = completeAddresses.filter(
+      completeAddress => !accounts.find(account => account.equals(completeAddress.address)),
+    );
     return recipients;
   }
 
@@ -396,7 +427,7 @@ export class PXEService implements PXE {
     txRequest: TxExecutionRequest,
     simulatePublic: boolean,
     msgSender: AztecAddress | undefined = undefined,
-  ) {
+  ): Promise<SimulatedTx> {
     if (!txRequest.functionData.isPrivate) {
       throw new Error(`Public entrypoints are not allowed`);
     }
@@ -417,8 +448,7 @@ export class PXEService implements PXE {
       }
 
       if (simulatePublic) {
-        // Only one transaction, so we can take index 0.
-        simulatedTx.publicReturnValues = (await this.#simulatePublicCalls(simulatedTx.tx))[0];
+        simulatedTx.publicOutput = await this.#simulatePublicCalls(simulatedTx.tx);
       }
 
       if (!msgSender) {
@@ -514,10 +544,10 @@ export class PXEService implements PXE {
 
   /**
    * Retrieves the simulation parameters required to run an ACIR simulation.
-   * This includes the contract address, function artifact, portal contract address, and historical tree roots.
+   * This includes the contract address, function artifact, and historical tree roots.
    *
    * @param execRequest - The transaction request object containing details of the contract call.
-   * @returns An object containing the contract address, function artifact, portal contract address, and historical tree roots.
+   * @returns An object containing the contract address, function artifact, and historical tree roots.
    */
   async #getSimulationParameters(execRequest: FunctionCall | TxExecutionRequest) {
     const contractAddress = (execRequest as FunctionCall).to ?? (execRequest as TxExecutionRequest).origin;
@@ -529,7 +559,6 @@ export class PXEService implements PXE {
       contractAddress,
       execRequest.functionData.selector,
     );
-    const portalContract = await this.contractDataOracle.getPortalContractAddress(contractAddress);
 
     return {
       contractAddress,
@@ -537,18 +566,17 @@ export class PXEService implements PXE {
         ...functionArtifact,
         debug,
       },
-      portalContract,
     };
   }
 
   async #simulate(txRequest: TxExecutionRequest, msgSender?: AztecAddress): Promise<ExecutionResult> {
     // TODO - Pause syncing while simulating.
 
-    const { contractAddress, functionArtifact, portalContract } = await this.#getSimulationParameters(txRequest);
+    const { contractAddress, functionArtifact } = await this.#getSimulationParameters(txRequest);
 
     this.log.debug('Executing simulator...');
     try {
-      const result = await this.simulator.run(txRequest, functionArtifact, contractAddress, portalContract, msgSender);
+      const result = await this.simulator.run(txRequest, functionArtifact, contractAddress, msgSender);
       this.log.verbose(`Simulation completed for ${contractAddress.toString()}:${functionArtifact.name}`);
       return result;
     } catch (err) {
@@ -637,8 +665,8 @@ export class PXEService implements PXE {
     this.log.debug(`Executing kernel prover...`);
     const { proof, publicInputs } = await kernelProver.prove(txExecutionRequest.toTxRequest(), executionResult);
 
-    const encryptedLogs = new EncryptedTxL2Logs(collectEncryptedLogs(executionResult));
-    const unencryptedLogs = new UnencryptedTxL2Logs(collectUnencryptedLogs(executionResult));
+    const unencryptedLogs = new UnencryptedTxL2Logs([collectSortedUnencryptedLogs(executionResult)]);
+    const encryptedLogs = new EncryptedTxL2Logs([collectSortedEncryptedLogs(executionResult)]);
     const enqueuedPublicFunctions = collectEnqueuedPublicFunctionCalls(executionResult);
 
     // HACK(#1639): Manually patches the ordering of the public call stack
@@ -646,7 +674,7 @@ export class PXEService implements PXE {
     await this.patchPublicCallStackOrdering(publicInputs, enqueuedPublicFunctions);
 
     const tx = new Tx(publicInputs, proof, encryptedLogs, unencryptedLogs, enqueuedPublicFunctions);
-    return new SimulatedTx(tx, [executionResult.returnValues]);
+    return new SimulatedTx(tx, executionResult.returnValues);
   }
 
   /**

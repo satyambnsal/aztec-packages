@@ -99,12 +99,14 @@ Builder create_inner_circuit()
                                   .pedersen_hash_constraints = {},
                                   .poseidon2_constraints = {},
                                   .fixed_base_scalar_mul_constraints = {},
+                                  .variable_base_scalar_mul_constraints = {},
                                   .ec_add_constraints = {},
                                   .recursion_constraints = {},
                                   .bigint_from_le_bytes_constraints = {},
                                   .bigint_to_le_bytes_constraints = {},
                                   .bigint_operations = {},
-                                  .constraints = { expr_a, expr_b, expr_c, expr_d },
+                                  .poly_triple_constraints = { expr_a, expr_b, expr_c, expr_d },
+                                  .quad_constraints = {},
                                   .block_constraints = {} };
 
     uint256_t inverse_of_five = fr(5).invert();
@@ -255,12 +257,14 @@ Builder create_outer_circuit(std::vector<Builder>& inner_circuits)
                                   .pedersen_hash_constraints = {},
                                   .poseidon2_constraints = {},
                                   .fixed_base_scalar_mul_constraints = {},
+                                  .variable_base_scalar_mul_constraints = {},
                                   .ec_add_constraints = {},
                                   .recursion_constraints = recursion_constraints,
                                   .bigint_from_le_bytes_constraints = {},
                                   .bigint_to_le_bytes_constraints = {},
                                   .bigint_operations = {},
-                                  .constraints = {},
+                                  .poly_triple_constraints = {},
+                                  .quad_constraints = {},
                                   .block_constraints = {} };
 
     auto outer_circuit = create_circuit(constraint_system, /*size_hint*/ 0, witness);

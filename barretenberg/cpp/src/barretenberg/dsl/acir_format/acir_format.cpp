@@ -13,8 +13,11 @@ template <typename Builder>
 void build_constraints(Builder& builder, AcirFormat const& constraint_system, bool has_valid_witness_assignments)
 {
     // Add arithmetic gates
-    for (const auto& constraint : constraint_system.constraints) {
+    for (const auto& constraint : constraint_system.poly_triple_constraints) {
         builder.create_poly_gate(constraint);
+    }
+    for (const auto& constraint : constraint_system.quad_constraints) {
+        builder.create_big_mul_gate(constraint);
     }
 
     // Add logic constraint
@@ -84,6 +87,11 @@ void build_constraints(Builder& builder, AcirFormat const& constraint_system, bo
     // Add fixed base scalar mul constraints
     for (const auto& constraint : constraint_system.fixed_base_scalar_mul_constraints) {
         create_fixed_base_constraint(builder, constraint);
+    }
+
+    // Add variable base scalar mul constraints
+    for (const auto& constraint : constraint_system.variable_base_scalar_mul_constraints) {
+        create_variable_base_constraint(builder, constraint);
     }
 
     // Add ec add constraints
@@ -218,6 +226,8 @@ UltraCircuitBuilder create_circuit(const AcirFormat& constraint_system, size_t s
     bool has_valid_witness_assignments = !witness.empty();
     build_constraints(builder, constraint_system, has_valid_witness_assignments);
 
+    builder.finalize_circuit();
+
     return builder;
 };
 
@@ -243,6 +253,8 @@ GoblinUltraCircuitBuilder create_circuit(const AcirFormat& constraint_system,
     // Populate constraints in the builder via the data in constraint_system
     bool has_valid_witness_assignments = !witness.empty();
     acir_format::build_constraints(builder, constraint_system, has_valid_witness_assignments);
+
+    builder.finalize_circuit();
 
     return builder;
 };

@@ -12,8 +12,7 @@ use dep::types::{
     append_only_tree_snapshot::AppendOnlyTreeSnapshot,
     membership_witness::{ArchiveRootMembershipWitness, NullifierMembershipWitness, PublicDataMembershipWitness},
     nullifier_leaf_preimage::NullifierLeafPreimage, public_data_update_request::PublicDataUpdateRequest,
-    public_data_read::PublicDataRead, kernel_data::KernelData,
-    side_effect::{SideEffect, SideEffectLinkedToNoteHash}
+    public_data_read::PublicDataRead, kernel_data::KernelData
 },
     constants::{
     NOTE_HASH_SUBTREE_SIBLING_PATH_LENGTH, NULLIFIER_SUBTREE_SIBLING_PATH_LENGTH,
@@ -29,7 +28,7 @@ use dep::types::{
 },
     mocked::{AggregationObject, Proof}, partial_state_reference::PartialStateReference,
     public_data_tree_leaf::PublicDataTreeLeaf,
-    public_data_tree_leaf_preimage::PublicDataTreeLeafPreimage,
+    public_data_tree_leaf_preimage::PublicDataTreeLeafPreimage, traits::is_empty,
     utils::{field::{full_field_less_than, full_field_greater_than}, uint256::U256}
 };
 
@@ -65,6 +64,16 @@ impl BaseRollupInputs {
             self.kernel_data.public_inputs.constants.tx_context.version
             == self.constants.global_variables.version, "kernel version does not match the rollup version"
         );
+
+        // Verify the kernel global variables if set, note these can be empty if this is a request coming directly from the private kernel tail.
+        // TODO(@spalladino) How can we check that this is a request coming from the private kernel tail?
+        assert(
+            self.kernel_data.public_inputs.constants.global_variables.is_empty()
+            | (self.kernel_data.public_inputs.constants.global_variables
+                == self.constants.global_variables), "kernel global variables do not match the rollup global variables"
+        );
+
+        self.validate_kernel_start_state();
 
         let rollup_validation_requests = self.kernel_data.public_inputs.rollup_validation_requests;
 
@@ -177,18 +186,22 @@ impl BaseRollupInputs {
         calculate_subtree_root(leaves.map(|leaf:NullifierLeafPreimage| leaf.hash()))
     }
 
+    fn validate_kernel_start_state(self) {
+        let kernel_state = self.kernel_data.public_inputs.start_state;
+        if !is_empty(kernel_state) {
+            assert(
+                kernel_state.note_hash_tree.eq(self.start.note_hash_tree), "Mismatch start state for note hash tree"
+            );
+            assert(
+                kernel_state.nullifier_tree.eq(self.start.nullifier_tree), "Mismatch start state for nullifier tree"
+            );
+            assert(
+                kernel_state.public_data_tree.eq(self.start.public_data_tree), "Mismatch start state for public data tree"
+            );
+        }
+    }
+
     fn validate_and_process_public_state(self) -> AppendOnlyTreeSnapshot {
-        // TODO(#2521) - data read validation should happen against the current state of the tx and not the start state.
-        // Blocks all interesting usecases that read and write to the same public state in the same tx.
-        // https://aztecprotocol.slack.com/archives/C02M7VC7TN0/p1695809629015719?thread_ts=1695653252.007339&cid=C02M7VC7TN0
-
-        // Process public data reads and public data update requests for left input
-        // validate_public_data_reads(
-        //                            self.start_public_data_tree_root,
-        //                            self.kernel_data[0].public_inputs.end.public_data_reads,
-        //                            0,
-        //                            self.new_public_data_reads_sibling_paths);
-
         let end_public_data_tree_snapshot = insert_public_data_update_requests(
             self.start.public_data_tree,
             self.kernel_data.public_inputs.end.public_data_update_requests.map(
@@ -316,43 +329,6 @@ fn insert_public_data_update_requests(
         [0; PUBLIC_DATA_SUBTREE_HEIGHT],
         [0; PUBLIC_DATA_TREE_HEIGHT]
     )
-}
-
-fn validate_public_data_reads(
-    tree_root: Field,
-    public_data_reads: [PublicDataRead; MAX_PUBLIC_DATA_READS_PER_TX],
-    public_data_reads_preimages: [PublicDataTreeLeafPreimage; MAX_PUBLIC_DATA_READS_PER_TX],
-    public_data_reads_witnesses: [PublicDataMembershipWitness; MAX_PUBLIC_DATA_READS_PER_TX]
-) {
-    for i in 0..MAX_PUBLIC_DATA_READS_PER_TX {
-        let read = public_data_reads[i];
-        let low_preimage = public_data_reads_preimages[i];
-        let witness = public_data_reads_witnesses[i];
-
-        let is_low_empty = low_preimage.is_empty();
-        let is_exact = low_preimage.slot == read.leaf_slot;
-
-        let is_less_than_slot = full_field_less_than(low_preimage.slot, read.leaf_slot);
-        let is_next_greater_than = full_field_less_than(read.leaf_slot, low_preimage.next_slot);
-        let is_in_range = is_less_than_slot
-            & (is_next_greater_than | ((low_preimage.next_index == 0) & (low_preimage.next_slot == 0)));
-
-        if (!read.is_empty()) {
-            assert(!is_low_empty, "public data read is not empty but low preimage is empty");
-            if is_in_range {
-                assert_eq(read.value, 0, "low leaf for public data read is in range but value is not zero");
-            } else {
-                assert(is_exact, "low leaf for public data read is invalid");
-                assert_eq(read.value, low_preimage.value, "low leaf for public data has different value");
-            }
-            assert_check_membership(
-                low_preimage.hash(),
-                witness.leaf_index,
-                witness.sibling_path,
-                tree_root
-            );
-        }
-    }
 }
 
 #[test]
@@ -750,11 +726,9 @@ mod tests {
         let mut builder = BaseRollupInputsBuilder::new();
 
         let new_note_hashes = [27, 28, 29, 30, 31, 32];
-        let mut new_note_hashes_vec = builder.kernel_data.new_note_hashes;
         for i in 0..new_note_hashes.len() {
-            new_note_hashes_vec.push(SideEffect { value: new_note_hashes[i], counter: 0 });
+            builder.kernel_data.add_new_note_hash(new_note_hashes[i]);
         }
-        builder.kernel_data.new_note_hashes = new_note_hashes_vec;
         let mut expected_commitments_tree = NonEmptyMerkleTree::new(
             [0; MAX_NEW_NOTE_HASHES_PER_TX * 2],
             [0; NOTE_HASH_TREE_HEIGHT],
@@ -1011,6 +985,14 @@ mod tests {
     unconstrained fn constants_dont_match_kernels_version() {
         let mut builder = BaseRollupInputsBuilder::new();
         builder.constants.global_variables.version = 3;
+        builder.fails();
+    }
+
+    #[test(should_fail_with = "kernel global variables do not match the rollup global variables")]
+    unconstrained fn constants_global_variables_dont_match_kernels() {
+        let mut builder = BaseRollupInputsBuilder::new();
+        builder.kernel_data.global_variables.block_number = 6;
+        builder.constants.global_variables.block_number = 7;
         builder.fails();
     }
 

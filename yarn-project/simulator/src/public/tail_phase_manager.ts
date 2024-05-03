@@ -1,14 +1,18 @@
 import { type PublicKernelRequest, PublicKernelType, type Tx } from '@aztec/circuit-types';
 import {
-  type Fr,
+  Fr,
   type GlobalVariables,
   type Header,
   type KernelCircuitPublicInputs,
   MAX_NEW_NOTE_HASHES_PER_TX,
+  MAX_NEW_NULLIFIERS_PER_TX,
+  MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX,
+  type MAX_UNENCRYPTED_LOGS_PER_TX,
+  type NoteHash,
   type Proof,
   type PublicKernelCircuitPublicInputs,
   PublicKernelTailCircuitPrivateInputs,
-  type SideEffect,
+  SideEffect,
   makeEmptyProof,
   mergeAccumulatedData,
   sortByCounter,
@@ -23,14 +27,14 @@ import { type PublicKernelCircuitSimulator } from './public_kernel_circuit_simul
 
 export class TailPhaseManager extends AbstractPhaseManager {
   constructor(
-    protected db: MerkleTreeOperations,
-    protected publicExecutor: PublicExecutor,
-    protected publicKernel: PublicKernelCircuitSimulator,
-    protected globalVariables: GlobalVariables,
-    protected historicalHeader: Header,
+    db: MerkleTreeOperations,
+    publicExecutor: PublicExecutor,
+    publicKernel: PublicKernelCircuitSimulator,
+    globalVariables: GlobalVariables,
+    historicalHeader: Header,
     protected publicContractsDB: ContractsDataSourcePublicDB,
     protected publicStateDB: PublicStateDB,
-    public readonly phase: PublicKernelPhase = PublicKernelPhase.TAIL,
+    phase: PublicKernelPhase = PublicKernelPhase.TAIL,
   ) {
     super(db, publicExecutor, publicKernel, globalVariables, historicalHeader, phase);
   }
@@ -47,7 +51,6 @@ export class TailPhaseManager extends AbstractPhaseManager {
         throw err;
       },
     );
-
     // commit the state updates from this transaction
     await this.publicStateDB.commit();
 
@@ -71,13 +74,17 @@ export class TailPhaseManager extends AbstractPhaseManager {
     previousOutput: PublicKernelCircuitPublicInputs,
     previousProof: Proof,
   ): Promise<[PublicKernelTailCircuitPrivateInputs, KernelCircuitPublicInputs]> {
+    // Temporary hack. Should sort them in the tail circuit.
+    previousOutput.end.unencryptedLogsHashes = this.sortLogsHashes<typeof MAX_UNENCRYPTED_LOGS_PER_TX>(
+      previousOutput.end.unencryptedLogsHashes,
+    );
     const [inputs, output] = await this.simulate(previousOutput, previousProof);
 
     // Temporary hack. Should sort them in the tail circuit.
     const noteHashes = mergeAccumulatedData(
-      MAX_NEW_NOTE_HASHES_PER_TX,
       previousOutput.endNonRevertibleData.newNoteHashes,
       previousOutput.end.newNoteHashes,
+      MAX_NEW_NOTE_HASHES_PER_TX,
     );
     output.end.newNoteHashes = this.sortNoteHashes<typeof MAX_NEW_NOTE_HASHES_PER_TX>(noteHashes);
 
@@ -88,31 +95,69 @@ export class TailPhaseManager extends AbstractPhaseManager {
     previousOutput: PublicKernelCircuitPublicInputs,
     previousProof: Proof,
   ): Promise<[PublicKernelTailCircuitPrivateInputs, KernelCircuitPublicInputs]> {
+    const inputs = await this.buildPrivateInputs(previousOutput, previousProof);
+    // We take a deep copy (clone) of these to pass to the prover
+    return [inputs.clone(), await this.publicKernel.publicKernelCircuitTail(inputs)];
+  }
+
+  private async buildPrivateInputs(previousOutput: PublicKernelCircuitPublicInputs, previousProof: Proof) {
     const previousKernel = this.getPreviousKernelData(previousOutput, previousProof);
 
     const { validationRequests, endNonRevertibleData, end } = previousOutput;
+
+    const pendingNullifiers = mergeAccumulatedData(
+      endNonRevertibleData.newNullifiers,
+      end.newNullifiers,
+      MAX_NEW_NULLIFIERS_PER_TX,
+    );
+
     const nullifierReadRequestHints = await this.hintsBuilder.getNullifierReadRequestHints(
       validationRequests.nullifierReadRequests,
-      endNonRevertibleData.newNullifiers,
-      end.newNullifiers,
+      pendingNullifiers,
     );
+
     const nullifierNonExistentReadRequestHints = await this.hintsBuilder.getNullifierNonExistentReadRequestHints(
       validationRequests.nullifierNonExistentReadRequests,
-      endNonRevertibleData.newNullifiers,
-      end.newNullifiers,
+      pendingNullifiers,
     );
-    const inputs = new PublicKernelTailCircuitPrivateInputs(
+
+    const pendingPublicDataWrites = mergeAccumulatedData(
+      endNonRevertibleData.publicDataUpdateRequests,
+      end.publicDataUpdateRequests,
+      MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX,
+    );
+
+    const publicDataHints = await this.hintsBuilder.getPublicDataHints(
+      validationRequests.publicDataReads,
+      pendingPublicDataWrites,
+    );
+
+    const publicDataReadRequestHints = this.hintsBuilder.getPublicDataReadRequestHints(
+      validationRequests.publicDataReads,
+      pendingPublicDataWrites,
+      publicDataHints,
+    );
+
+    const currentState = await this.db.getStateReference();
+
+    return new PublicKernelTailCircuitPrivateInputs(
       previousKernel,
       nullifierReadRequestHints,
       nullifierNonExistentReadRequestHints,
+      publicDataHints,
+      publicDataReadRequestHints,
+      currentState.partial,
     );
-    return [inputs, await this.publicKernel.publicKernelCircuitTail(inputs)];
   }
 
-  private sortNoteHashes<N extends number>(noteHashes: Tuple<SideEffect, N>): Tuple<Fr, N> {
-    return sortByCounter(noteHashes.map(n => ({ ...n, counter: n.counter.toNumber() }))).map(n => n.value) as Tuple<
-      Fr,
-      N
-    >;
+  private sortNoteHashes<N extends number>(noteHashes: Tuple<NoteHash, N>): Tuple<Fr, N> {
+    return sortByCounter(noteHashes).map(n => n.value) as Tuple<Fr, N>;
+  }
+
+  private sortLogsHashes<N extends number>(unencryptedLogsHashes: Tuple<SideEffect, N>): Tuple<SideEffect, N> {
+    // TODO(6052): logs here may have duplicate counters from nested calls
+    return sortByCounter(
+      unencryptedLogsHashes.map(n => ({ ...n, counter: n.counter.toNumber(), isEmpty: () => n.isEmpty() })),
+    ).map(h => new SideEffect(h.value, new Fr(h.counter))) as Tuple<SideEffect, N>;
   }
 }

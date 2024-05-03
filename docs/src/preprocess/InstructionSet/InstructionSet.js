@@ -30,7 +30,7 @@ const CALL_INSTRUCTION_ARGS = [
   {
     name: "gasOffset",
     description:
-      "offset to three words containing `{l1GasLeft, l2GasLeft, daGasLeft}`: amount of gas to provide to the callee",
+      "offset to two words containing `{l2GasLeft, daGasLeft}`: amount of gas to provide to the callee",
   },
   { name: "addrOffset", description: "address of the contract to call" },
   {
@@ -38,10 +38,9 @@ const CALL_INSTRUCTION_ARGS = [
     description: "memory offset to args (will become the callee's calldata)",
   },
   {
-    name: "argsSize",
-    description: "number of words to pass via callee's calldata",
-    mode: "immediate",
-    type: "u32",
+    name: "argsSizeOffset",
+    description:
+      "memory offset for the number of words to pass via callee's calldata",
   },
   {
     name: "retOffset",
@@ -429,6 +428,7 @@ const INSTRUCTION_SET_RAW = [
       {
         name: "bOffset",
         description: "memory offset of the operation's right input",
+        type: "u8",
       },
       {
         name: "dstOffset",
@@ -439,7 +439,7 @@ const INSTRUCTION_SET_RAW = [
     Expression: "`M[dstOffset] = M[aOffset] << M[bOffset]`",
     Summary: "Bitwise leftward shift (a << b)",
     Details: "",
-    "Tag checks": "`T[aOffset] == T[bOffset] == inTag`",
+    "Tag checks": "`T[aOffset] == inTag`, `T[bOffset] == u8`",
     "Tag updates": "`T[dstOffset] = inTag`",
   },
   {
@@ -458,6 +458,7 @@ const INSTRUCTION_SET_RAW = [
       {
         name: "bOffset",
         description: "memory offset of the operation's right input",
+        type: "u8",
       },
       {
         name: "dstOffset",
@@ -468,7 +469,7 @@ const INSTRUCTION_SET_RAW = [
     Expression: "`M[dstOffset] = M[aOffset] >> M[bOffset]`",
     Summary: "Bitwise rightward shift (a >> b)",
     Details: "",
-    "Tag checks": "`T[aOffset] == T[bOffset] == inTag`",
+    "Tag checks": "`T[aOffset] == inTag`, `T[bOffset] == u8`",
     "Tag updates": "`T[dstOffset] = inTag`",
   },
   {
@@ -531,24 +532,6 @@ const INSTRUCTION_SET_RAW = [
     "Tag updates": "`T[dstOffset] = u32`",
   },
   {
-    id: "origin",
-    Name: "`ORIGIN`",
-    Category: "Execution Environment",
-    Flags: [{ name: "indirect", description: INDIRECT_FLAG_DESCRIPTION }],
-    Args: [
-      {
-        name: "dstOffset",
-        description:
-          "memory offset specifying where to store operation's result",
-      },
-    ],
-    Expression: "`M[dstOffset] = context.environment.origin`",
-    Summary: "Get the transaction's origination address",
-    Details: "",
-    "Tag checks": "",
-    "Tag updates": "`T[dstOffset] = u32`",
-  },
-  {
     id: "sender",
     Name: "`SENDER`",
     Category: "Execution Environment",
@@ -562,43 +545,6 @@ const INSTRUCTION_SET_RAW = [
     ],
     Expression: "`M[dstOffset] = context.environment.sender`",
     Summary: "Get the address of the sender (caller of the current context)",
-    Details: "",
-    "Tag checks": "",
-    "Tag updates": "`T[dstOffset] = u32`",
-  },
-  {
-    id: "portal",
-    Name: "`PORTAL`",
-    Category: "Execution Environment",
-    Flags: [{ name: "indirect", description: INDIRECT_FLAG_DESCRIPTION }],
-    Args: [
-      {
-        name: "dstOffset",
-        description:
-          "memory offset specifying where to store operation's result",
-      },
-    ],
-    Expression: "`M[dstOffset] = context.environment.portal`",
-    Summary: "Get the address of the l1 portal contract",
-    Details: "",
-    "Tag checks": "",
-    "Tag updates": "`T[dstOffset] = u32`",
-  },
-  {
-    id: "feeperl1gas",
-    Name: "`FEEPERL1GAS`",
-    Category: "Execution Environment",
-    Flags: [{ name: "indirect", description: INDIRECT_FLAG_DESCRIPTION }],
-    Args: [
-      {
-        name: "dstOffset",
-        description:
-          "memory offset specifying where to store operation's result",
-      },
-    ],
-    Expression: "`M[dstOffset] = context.environment.feePerL1Gas`",
-    Summary:
-      'Get the fee to be paid per "L1 gas" - constant for entire transaction',
     Details: "",
     "Tag checks": "",
     "Tag updates": "`T[dstOffset] = u32`",
@@ -751,24 +697,6 @@ const INSTRUCTION_SET_RAW = [
     "Tag updates": "`T[dstOffset] = u32`",
   },
   {
-    id: "blockl1gaslimit",
-    Name: "`BLOCKL1GASLIMIT`",
-    Category: "Execution Environment - Globals",
-    Flags: [{ name: "indirect", description: INDIRECT_FLAG_DESCRIPTION }],
-    Args: [
-      {
-        name: "dstOffset",
-        description:
-          "memory offset specifying where to store operation's result",
-      },
-    ],
-    Expression: "`M[dstOffset] = context.environment.globals.l1GasLimit`",
-    Summary: 'Total amount of "L1 gas" that a block can consume',
-    Details: "",
-    "Tag checks": "",
-    "Tag updates": "`T[dstOffset] = u32`",
-  },
-  {
     id: "blockl2gaslimit",
     Name: "`BLOCKL2GASLIMIT`",
     Category: "Execution Environment - Globals",
@@ -829,24 +757,6 @@ const INSTRUCTION_SET_RAW = [
       "Calldata is read-only and cannot be directly operated on by other instructions. This instruction moves words from calldata into memory so they can be operated on normally.",
     "Tag checks": "",
     "Tag updates": "`T[dstOffset:dstOffset+copySize] = field`",
-  },
-  {
-    id: "l1gasleft",
-    Name: "`L1GASLEFT`",
-    Category: "Machine State - Gas",
-    Flags: [{ name: "indirect", description: INDIRECT_FLAG_DESCRIPTION }],
-    Args: [
-      {
-        name: "dstOffset",
-        description:
-          "memory offset specifying where to store operation's result",
-      },
-    ],
-    Expression: "`M[dstOffset] = context.machineState.l1GasLeft`",
-    Summary: 'Remaining "L1 gas" for this call (after this instruction)',
-    Details: "",
-    "Tag checks": "",
-    "Tag updates": "`T[dstOffset] = u32`",
   },
   {
     id: "l2gasleft",
@@ -1476,9 +1386,8 @@ context.accruedSubstate.sentL2ToL1Messages.append(
     Expression: `
 // instr.args are { gasOffset, addrOffset, argsOffset, retOffset, retSize }
 chargeGas(context,
-          l1GasCost=M[instr.args.gasOffset],
-          l2GasCost=M[instr.args.gasOffset+1],
-          daGasCost=M[instr.args.gasOffset+2])
+          l2GasCost=M[instr.args.gasOffset],
+          daGasCost=M[instr.args.gasOffset+1])
 traceNestedCall(context, instr.args.addrOffset)
 nestedContext = deriveContext(context, instr.args, isStaticCall=false, isDelegateCall=false)
 execute(nestedContext)
@@ -1506,9 +1415,8 @@ T[retOffset:retOffset+retSize] = field
     Expression: `
 // instr.args are { gasOffset, addrOffset, argsOffset, retOffset, retSize }
 chargeGas(context,
-          l1GasCost=M[instr.args.gasOffset],
-          l2GasCost=M[instr.args.gasOffset+1],
-          daGasCost=M[instr.args.gasOffset+2])
+          l2GasCost=M[instr.args.gasOffset],
+          daGasCost=M[instr.args.gasOffset+1])
 traceNestedCall(context, instr.args.addrOffset)
 nestedContext = deriveContext(context, instr.args, isStaticCall=true, isDelegateCall=false)
 execute(nestedContext)
@@ -1534,9 +1442,8 @@ T[retOffset:retOffset+retSize] = field
     Expression: `
 // instr.args are { gasOffset, addrOffset, argsOffset, retOffset, retSize }
 chargeGas(context,
-          l1GasCost=M[instr.args.gasOffset],
-          l2GasCost=M[instr.args.gasOffset+1],
-          daGasCost=M[instr.args.gasOffset+2])
+          l2GasCost=M[instr.args.gasOffset],
+          daGasCost=M[instr.args.gasOffset+1])
 traceNestedCall(context, instr.args.addrOffset)
 nestedContext = deriveContext(context, instr.args, isStaticCall=false, isDelegateCall=true)
 execute(nestedContext)

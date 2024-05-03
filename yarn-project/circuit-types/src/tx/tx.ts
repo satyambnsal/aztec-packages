@@ -39,16 +39,6 @@ export class Tx {
      */
     public readonly enqueuedPublicFunctionCalls: PublicCallRequest[],
   ) {
-    if (this.unencryptedLogs.functionLogs.length < this.encryptedLogs.functionLogs.length) {
-      // This check is present because each private function invocation creates encrypted FunctionL2Logs object and
-      // both public and private function invocations create unencrypted FunctionL2Logs object. Hence "num unencrypted"
-      // >= "num encrypted".
-      throw new Error(
-        `Number of function logs in unencrypted logs (${this.unencryptedLogs.functionLogs.length}) has to be equal
-        or larger than number function logs in encrypted logs (${this.encryptedLogs.functionLogs.length})`,
-      );
-    }
-
     const kernelPublicCallStackSize = data.numberOfPublicCallRequests();
     if (kernelPublicCallStackSize !== enqueuedPublicFunctionCalls.length) {
       throw new Error(

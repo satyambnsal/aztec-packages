@@ -1,5 +1,6 @@
 import {
   MerkleTreeId,
+  type ProcessReturnValues,
   type PublicKernelRequest,
   type SimulationError,
   type Tx,
@@ -11,6 +12,7 @@ import {
   ContractStorageRead,
   ContractStorageUpdateRequest,
   Fr,
+  Gas,
   type GlobalVariables,
   type Header,
   type KernelCircuitPublicInputs,
@@ -25,7 +27,10 @@ import {
   MAX_PUBLIC_DATA_READS_PER_TX,
   MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_CALL,
   MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX,
+  MAX_UNENCRYPTED_LOGS_PER_CALL,
   MembershipWitness,
+  NoteHash,
+  Nullifier,
   type PrivateKernelTailCircuitPublicInputs,
   type Proof,
   PublicCallData,
@@ -40,19 +45,11 @@ import {
   ReadRequest,
   RevertCode,
   SideEffect,
-  SideEffectLinkedToNoteHash,
   VK_TREE_HEIGHT,
   VerificationKey,
   makeEmptyProof,
 } from '@aztec/circuits.js';
 import { computeVarArgsHash } from '@aztec/circuits.js/hash';
-import {
-  type AbiType,
-  type DecodedReturn,
-  type FunctionArtifact,
-  type ProcessReturnValues,
-  decodeReturnValues,
-} from '@aztec/foundation/abi';
 import { arrayNonEmptyLength, padArrayEnd } from '@aztec/foundation/collection';
 import { type DebugLogger, createDebugLogger } from '@aztec/foundation/log';
 import { type Tuple } from '@aztec/foundation/serialize';
@@ -231,16 +228,17 @@ export abstract class AbstractPhaseManager {
 
     const newUnencryptedFunctionLogs: UnencryptedFunctionL2Logs[] = [];
 
+    // Transaction fee is zero for all phases except teardown
+    const transactionFee = this.getTransactionFee(tx, previousPublicKernelOutput);
+
     // TODO(#1684): Should multiple separately enqueued public calls be treated as
     // separate public callstacks to be proven by separate public kernel sequences
     // and submitted separately to the base rollup?
 
-    const returns = [];
+    let returns: ProcessReturnValues = undefined;
 
     for (const enqueuedCall of enqueuedCalls) {
       const executionStack: (PublicExecution | PublicExecutionResult)[] = [enqueuedCall];
-
-      let currentReturn: DecodedReturn | undefined = undefined;
 
       // Keep track of which result is for the top/enqueued call
       let enqueuedExecutionResult: PublicExecutionResult | undefined;
@@ -248,10 +246,19 @@ export abstract class AbstractPhaseManager {
       while (executionStack.length) {
         const current = executionStack.pop()!;
         const isExecutionRequest = !isPublicExecutionResult(current);
+        // TODO(6052): Extract correct new counter from nested calls
         const sideEffectCounter = lastSideEffectCounter(tx) + 1;
+        const availableGas = this.getAvailableGas(tx, previousPublicKernelOutput);
 
         const result = isExecutionRequest
-          ? await this.publicExecutor.simulate(current, this.globalVariables, sideEffectCounter)
+          ? await this.publicExecutor.simulate(
+              current,
+              this.globalVariables,
+              availableGas,
+              tx.data.constants.txContext,
+              transactionFee,
+              sideEffectCounter,
+            )
           : current;
 
         const functionSelector = result.execution.functionData.selector.toString();
@@ -264,7 +271,9 @@ export abstract class AbstractPhaseManager {
           throw result.revertReason;
         }
 
-        newUnencryptedFunctionLogs.push(result.unencryptedLogs);
+        if (isExecutionRequest) {
+          newUnencryptedFunctionLogs.push(result.allUnencryptedLogs);
+        }
 
         this.log.debug(
           `Running public kernel circuit for ${result.execution.contractAddress.toString()}:${functionSelector}`,
@@ -300,27 +309,29 @@ export abstract class AbstractPhaseManager {
 
         if (!enqueuedExecutionResult) {
           enqueuedExecutionResult = result;
-
-          // TODO(#5450) Need to use the proper return values here
-          const returnTypes: AbiType[] = [
-            { kind: 'array', length: result.returnValues.length, type: { kind: 'field' } },
-          ];
-          const mockArtifact = { returnTypes } as any as FunctionArtifact;
-
-          currentReturn = decodeReturnValues(mockArtifact, result.returnValues);
+          returns = result.returnValues;
         }
       }
       // HACK(#1622): Manually patches the ordering of public state actions
       // TODO(#757): Enforce proper ordering of public state actions
       patchPublicStorageActionOrdering(kernelOutput, enqueuedExecutionResult!, this.phase);
-
-      returns.push(currentReturn);
     }
 
     // TODO(#3675): This should be done in a public kernel circuit
     removeRedundantPublicDataWrites(kernelOutput, this.phase);
 
     return [publicKernelInputs, kernelOutput, kernelProof, newUnencryptedFunctionLogs, undefined, returns];
+  }
+
+  protected getAvailableGas(tx: Tx, previousPublicKernelOutput: PublicKernelCircuitPublicInputs) {
+    return tx.data.constants.txContext.gasSettings
+      .getLimits() // No need to subtract teardown limits since they are already included in end.gasUsed
+      .sub(previousPublicKernelOutput.end.gasUsed)
+      .sub(previousPublicKernelOutput.endNonRevertibleData.gasUsed);
+  }
+
+  protected getTransactionFee(_tx: Tx, _previousPublicKernelOutput: PublicKernelCircuitPublicInputs) {
+    return Fr.ZERO;
   }
 
   protected async runKernelCircuit(
@@ -338,14 +349,15 @@ export abstract class AbstractPhaseManager {
   ): Promise<[PublicKernelCircuitPrivateInputs, PublicKernelCircuitPublicInputs]> {
     const previousKernel = this.getPreviousKernelData(previousOutput, previousProof);
 
+    // We take a deep copy (clone) of these inputs to be passed to the prover
     const inputs = new PublicKernelCircuitPrivateInputs(previousKernel, callData);
     switch (this.phase) {
       case PublicKernelPhase.SETUP:
-        return [inputs, await this.publicKernel.publicKernelCircuitSetup(inputs)];
+        return [inputs.clone(), await this.publicKernel.publicKernelCircuitSetup(inputs)];
       case PublicKernelPhase.APP_LOGIC:
-        return [inputs, await this.publicKernel.publicKernelCircuitAppLogic(inputs)];
+        return [inputs.clone(), await this.publicKernel.publicKernelCircuitAppLogic(inputs)];
       case PublicKernelPhase.TEARDOWN:
-        return [inputs, await this.publicKernel.publicKernelCircuitTeardown(inputs)];
+        return [inputs.clone(), await this.publicKernel.publicKernelCircuitTeardown(inputs)];
       default:
         throw new Error(`No public kernel circuit for inputs`);
     }
@@ -362,7 +374,7 @@ export abstract class AbstractPhaseManager {
     return new PublicKernelData(previousOutput, previousProof, vk, vkIndex, vkSiblingPath);
   }
 
-  protected async getPublicCircuitPublicInputs(result: PublicExecutionResult) {
+  protected async getPublicCallStackItem(result: PublicExecutionResult, isExecutionRequest = false) {
     const publicDataTreeInfo = await this.db.getTreeInfo(MerkleTreeId.PUBLIC_DATA_TREE);
     this.historicalHeader.state.partial.publicDataTree.root = Fr.fromBuffer(publicDataTreeInfo.root);
 
@@ -373,16 +385,12 @@ export abstract class AbstractPhaseManager {
       MAX_PUBLIC_CALL_STACK_LENGTH_PER_CALL,
     );
 
-    // TODO(https://github.com/AztecProtocol/aztec-packages/issues/1165) --> set this in Noir
-    const unencryptedLogsHash = Fr.fromBuffer(result.unencryptedLogs.hash());
-    const unencryptedLogPreimagesLength = new Fr(result.unencryptedLogs.getSerializedLength());
-
-    return PublicCircuitPublicInputs.from({
+    const publicCircuitPublicInputs = PublicCircuitPublicInputs.from({
       callContext: result.execution.callContext,
       proverAddress: AztecAddress.ZERO,
       argsHash: computeVarArgsHash(result.execution.args),
-      newNoteHashes: padArrayEnd(result.newNoteHashes, SideEffect.empty(), MAX_NEW_NOTE_HASHES_PER_CALL),
-      newNullifiers: padArrayEnd(result.newNullifiers, SideEffectLinkedToNoteHash.empty(), MAX_NEW_NULLIFIERS_PER_CALL),
+      newNoteHashes: padArrayEnd(result.newNoteHashes, NoteHash.empty(), MAX_NEW_NOTE_HASHES_PER_CALL),
+      newNullifiers: padArrayEnd(result.newNullifiers, Nullifier.empty(), MAX_NEW_NULLIFIERS_PER_CALL),
       newL2ToL1Msgs: padArrayEnd(result.newL2ToL1Messages, L2ToL1Message.empty(), MAX_NEW_L2_TO_L1_MSGS_PER_CALL),
       startSideEffectCounter: result.startSideEffectCounter,
       endSideEffectCounter: result.endSideEffectCounter,
@@ -408,19 +416,25 @@ export abstract class AbstractPhaseManager {
         MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_CALL,
       ),
       publicCallStackHashes,
-      unencryptedLogsHash,
-      unencryptedLogPreimagesLength,
+      unencryptedLogsHashes: padArrayEnd(
+        result.unencryptedLogsHashes,
+        SideEffect.empty(),
+        MAX_UNENCRYPTED_LOGS_PER_CALL,
+      ),
+      unencryptedLogPreimagesLength: result.unencryptedLogPreimagesLength,
       historicalHeader: this.historicalHeader,
+      globalVariables: this.globalVariables,
+      startGasLeft: Gas.from(result.startGasLeft),
+      endGasLeft: Gas.from(result.endGasLeft),
+      transactionFee: result.transactionFee,
       // TODO(@just-mitch): need better mapping from simulator to revert code.
       revertCode: result.reverted ? RevertCode.REVERTED : RevertCode.OK,
     });
-  }
 
-  protected async getPublicCallStackItem(result: PublicExecutionResult, isExecutionRequest = false) {
     return new PublicCallStackItem(
       result.execution.contractAddress,
       result.execution.functionData,
-      await this.getPublicCircuitPublicInputs(result),
+      publicCircuitPublicInputs,
       isExecutionRequest,
     );
   }
@@ -458,8 +472,7 @@ export abstract class AbstractPhaseManager {
       c.toCallRequest(callStackItem.publicInputs.callContext),
     );
     const publicCallStack = padArrayEnd(publicCallRequests, CallRequest.empty(), MAX_PUBLIC_CALL_STACK_LENGTH_PER_CALL);
-    const portalContractAddress = result.execution.callContext.portalContractAddress.toField();
-    return new PublicCallData(callStackItem, publicCallStack, makeEmptyProof(), portalContractAddress, bytecodeHash);
+    return new PublicCallData(callStackItem, publicCallStack, makeEmptyProof(), bytecodeHash);
   }
 }
 
@@ -515,29 +528,9 @@ function patchPublicStorageActionOrdering(
   // so the returned result will be a subset of the public kernel output.
 
   const simPublicDataReads = collectPublicDataReads(execResult);
-  // verify that each read is in the kernel output
-  for (const read of simPublicDataReads) {
-    if (!publicDataReads.find(item => item.equals(read))) {
-      throw new Error(
-        `Public data reads from simulator do not match those from public kernel.\nFrom simulator: ${simPublicDataReads
-          .map(p => p.toFriendlyJSON())
-          .join(', ')}\nFrom public kernel: ${publicDataReads.map(i => i.toFriendlyJSON()).join(', ')}`,
-      );
-    }
-  }
 
   const simPublicDataUpdateRequests = collectPublicDataUpdateRequests(execResult);
-  for (const update of simPublicDataUpdateRequests) {
-    if (!publicDataUpdateRequests.find(item => item.equals(update))) {
-      throw new Error(
-        `Public data update requests from simulator do not match those from public kernel.\nFrom simulator: ${simPublicDataUpdateRequests
-          .map(p => p.toFriendlyJSON())
-          .join(', ')}\nFrom public kernel revertible: ${publicDataUpdateRequests
-          .map(i => i.toFriendlyJSON())
-          .join(', ')}`,
-      );
-    }
-  }
+
   // We only want to reorder the items from the public inputs of the
   // most recently processed top/enqueued call.
 

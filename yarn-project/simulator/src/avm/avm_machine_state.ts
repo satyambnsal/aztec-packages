@@ -9,7 +9,6 @@ import { OutOfGasError } from './errors.js';
  * A few fields of machine state are initialized from AVM session inputs or call instruction arguments
  */
 export type InitialAvmMachineState = {
-  l1GasLeft: number;
   l2GasLeft: number;
   daGasLeft: number;
 };
@@ -18,7 +17,6 @@ export type InitialAvmMachineState = {
  * Avm state modified on an instruction-per-instruction basis.
  */
 export class AvmMachineState {
-  public l1GasLeft: number;
   /** gas remaining of the gas allocated for a contract call */
   public l2GasLeft: number;
   public daGasLeft: number;
@@ -44,14 +42,23 @@ export class AvmMachineState {
   /** Output data must NOT be modified once it is set */
   private output: Fr[] = [];
 
-  constructor(l1GasLeft: number, l2GasLeft: number, daGasLeft: number) {
-    this.l1GasLeft = l1GasLeft;
-    this.l2GasLeft = l2GasLeft;
-    this.daGasLeft = daGasLeft;
+  constructor(gasLeft: Gas);
+  constructor(l2GasLeft: number, daGasLeft: number);
+  constructor(gasLeftOrL2GasLeft: Gas | number, daGasLeft?: number) {
+    if (typeof gasLeftOrL2GasLeft === 'object') {
+      ({ l2Gas: this.l2GasLeft, daGas: this.daGasLeft } = gasLeftOrL2GasLeft);
+    } else {
+      this.l2GasLeft = gasLeftOrL2GasLeft!;
+      this.daGasLeft = daGasLeft!;
+    }
+  }
+
+  public get gasLeft(): Gas {
+    return { l2Gas: this.l2GasLeft, daGas: this.daGasLeft };
   }
 
   public static fromState(state: InitialAvmMachineState): AvmMachineState {
-    return new AvmMachineState(state.l1GasLeft, state.l2GasLeft, state.daGasLeft);
+    return new AvmMachineState(state.l2GasLeft, state.daGasLeft);
   }
 
   /**
@@ -128,6 +135,17 @@ export class AvmMachineState {
     if (!this.halted) {
       throw new Error('Execution results are not ready! Execution is ongoing.');
     }
-    return new AvmContractCallResults(this.reverted, this.output);
+    let revertReason = undefined;
+    if (this.reverted && this.output.length > 0) {
+      try {
+        // Try to interpret the output as a text string.
+        revertReason = new Error(
+          'Reverted with output: ' + String.fromCharCode(...this.output.slice(1).map(fr => fr.toNumber())),
+        );
+      } catch (e) {
+        revertReason = new Error('Reverted with non-string output');
+      }
+    }
+    return new AvmContractCallResults(this.reverted, this.output, revertReason);
   }
 }
